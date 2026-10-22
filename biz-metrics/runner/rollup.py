@@ -11,8 +11,12 @@ Env:
   BIZ_METRICS_STORE_DSN    psycopg DSN for biz_metrics (write role biz_rw)
   BIZ_METRICS_CMP_DSN      psycopg DSN for the CMP app DB (read role biz_ro)
   BIZ_METRICS_WEBSITE_DSN  psycopg DSN for the website app DB (read role biz_ro)
-  BIZ_METRICS_RELAY_DSN    psycopg DSN for the Relay app DB (read role biz_ro)
+  BIZ_METRICS_RELAY_DSN    psycopg DSN for the Relay app DB on pg-relay (read role biz_ro)
   VM_PUSH_URL              e.g. http://10.100.0.1:8428/api/v1/import/prometheus
+
+Registry entries name their source DSN env; product intakes (relay, AISHL)
+append entries with their own DSN envs. --today-so-far upserts only today
+(hourly vmui illuminator). --textfile-dir writes a node_exporter fallback.
 """
 
 from __future__ import annotations
@@ -26,6 +30,25 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SQL_ROOT = os.path.normpath(os.path.join(HERE, "..", "sql"))
+
+# Never push these as VM labels (PII / unbounded cardinality). Dropped
+# defensively at render time; SQL files must not select them either.
+BLOCKED_LABELS = frozenset(
+    {
+        "email",
+        "e-mail",
+        "user_id",
+        "userid",
+        "user-id",
+        "student_id",
+        "ip",
+        "ip_address",
+        "phone",
+        "token",
+    }
+)
+
+MAX_LABEL_VALUE_LEN = 128
 
 # metric -> (project, source dsn env, sql file, platform).
 # platform is tagged by the runner from day one; the same SQL file serves
@@ -124,9 +147,17 @@ def prom_escape(value: str) -> str:
 def render_sample(
     series: str, dims: dict, value: object, day: dt.date
 ) -> str:
-    """One Prometheus text line with an explicit day-start-UTC timestamp (ms)."""
+    """One Prometheus text line with an explicit day-start-UTC timestamp (ms).
+
+    Blocked (PII/unbounded) label keys are dropped, never pushed.
+    """
+    kept = {
+        k: v for k, v in dims.items()
+        if k.strip().lower() not in BLOCKED_LABELS
+    }
     labels = "".join(
-        f', {k}="{prom_escape(str(v))}"' for k, v in sorted(dims.items())
+        f', {k}="{prom_escape(str(v)[:MAX_LABEL_VALUE_LEN])}"'
+        for k, v in sorted(kept.items())
     )
     if labels.startswith(", "):
         labels = labels[2:]
@@ -214,10 +245,42 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--no-push", dest="push", action="store_false")
     ap.add_argument("--dry-run", action="store_true",
                     help="query sources and print payload; no writes, no push")
+    ap.add_argument("--today-so-far", action="store_true",
+                    help="upsert only today (UTC); hourly vmui illuminator")
+    ap.add_argument("--textfile-dir", default=None,
+                    help="also write node_exporter textfile fallback here")
     return ap.parse_args(argv)
 
 
+def write_textfile(rows: list[dict], textfile_dir: str) -> str:
+    """node_exporter textfile fallback (gauges; textfile format has no
+    timestamps, so this carries the latest pushed values)."""
+    os.makedirs(textfile_dir, exist_ok=True)
+    out = os.path.join(textfile_dir, "biz_metrics.prom")
+    tmp = out + ".tmp"
+    names = sorted({f"biz_{r['series']}" for r in rows})
+    with open(tmp, "w", encoding="utf-8") as fh:
+        for name in names:
+            fh.write(f"# HELP {name} business daily aggregate (collect-only)\n")
+            fh.write(f"# TYPE {name} gauge\n")
+        for r in sorted(rows, key=lambda r: (
+                r["series"], json.dumps(r["dims"], sort_keys=True),
+                str(r["day"]))):
+            labels = "".join(
+                f', {k}="{prom_escape(str(v)[:MAX_LABEL_VALUE_LEN])}"'
+                for k, v in sorted(r["dims"].items())
+                if k.strip().lower() not in BLOCKED_LABELS
+            )
+            if labels.startswith(", "):
+                labels = labels[2:]
+            fh.write(f"biz_{r['series']}{{{labels}}} {r['value']}\n")
+    os.replace(tmp, out)
+    return out
+
+
 def resolve_days(args: argparse.Namespace) -> list[dt.date]:
+    if args.today_so_far:
+        return [utc_today()]
     if args.since:
         since = dt.date.fromisoformat(args.since)
         until = (
@@ -269,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
             store_conn.close()
 
     payload = build_payload(all_rows)
+    if args.textfile_dir:
+        out = write_textfile(all_rows, args.textfile_dir)
+        print(f"textfile fallback: {out}")
     if args.dry_run or not args.push:
         sys.stdout.write(payload)
         return 0

@@ -1,12 +1,13 @@
--- biz_metrics schema — Phase 1 collect-only store (t1127u).
--- Applied ONCE by the operator on the existing pg-shared instance:
---   createdb -h pg-shared -U postgres biz_metrics
---   psql -h pg-shared -U postgres -d biz_metrics -f schema.sql
+-- biz_metrics durable store (system of record for business aggregates).
+-- Database: biz_metrics on the EXISTING pg-shared instance (NOT inside app schemas).
+-- Catalog: ~/tmp/agent-reports/business-metrics-catalog-t1127u-2026-10-22.md §1 + §4 Intake A.
+-- Phase 1 = collect-only. No alert rules, no vmalert, no thresholds here.
 --
--- App databases (cmp, website) are never migrated by this file.
--- Access: read-only role biz_ro (SELECT on listed tables only),
--- write role biz_rw (metric_daily only). Credentials live in the
--- existing secrets path on contabo-b, never in the repo.
+-- Apply (operator, once, on pg-shared as superuser; secrets stay in the
+-- existing contabo-b secrets path, never in this repo):
+--   CREATE DATABASE biz_metrics OWNER biz_rw;
+--   psql -d biz_metrics -f schema.sql
+-- Roles and per-table grants live in roles.sql (applied per instance/DB).
 
 CREATE TABLE IF NOT EXISTS metric_daily (
     day DATE NOT NULL,
@@ -21,9 +22,12 @@ CREATE TABLE IF NOT EXISTS metric_daily (
 CREATE INDEX IF NOT EXISTS metric_daily_project_metric_day_idx
     ON metric_daily (project, metric, day DESC);
 
--- Operator roles (review names against local secrets path before running):
+-- Operator roles (passwords out-of-band, see roles.sql; review names against
+-- the local secrets path before running):
 --   CREATE ROLE biz_ro WITH LOGIN PASSWORD '<from secrets>';
+--   CREATE ROLE biz_rw WITH LOGIN PASSWORD '<from secrets>';
 --   GRANT CONNECT ON DATABASE cmp TO biz_ro;      -- repeat: website
+--   GRANT CONNECT ON DATABASE biz_metrics TO biz_rw;
 --   GRANT USAGE ON SCHEMA public TO biz_ro;
 --   GRANT SELECT (id, homework_id, submitted_at) ON courses_submission TO biz_ro;
 --   GRANT SELECT (id, course_id, slug) ON courses_homework TO biz_ro;
@@ -42,5 +46,6 @@ CREATE INDEX IF NOT EXISTS metric_daily_project_metric_day_idx
 --   GRANT SELECT (id, client_id, campaign_id, transactional_message_id,
 --     event_type, created_at) ON email_events TO biz_ro;
 --   GRANT SELECT (id, slug) ON clients TO biz_ro;
---   CREATE ROLE biz_rw WITH LOGIN PASSWORD '<from secrets>';
---   GRANT ALL ON metric_daily TO biz_rw;
+--   GRANT SELECT, INSERT, UPDATE ON metric_daily TO biz_rw;
+--   GRANT SELECT ON metric_daily TO biz_ro;
+--   (full per-DB list in roles.sql; AISHL tables follow the same pattern)

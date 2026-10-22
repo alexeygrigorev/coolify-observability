@@ -1,6 +1,12 @@
-# biz-metrics nightly rollup — contabo-b, Europe/Berlin 01:30.
+# biz-metrics nightly rollup — contabo-b, 01:30 Europe/Berlin.
 # Recomputes D-1..D-7 (late submits/resubmit edits settle within days).
-# Optional hourly "today so far" run feeds vmui only (--window 0 is NOT
-# supported; hourly uses --since today --no-push? no — hourly should not
-# rewrite history; keep nightly-only until the hourly need is confirmed).
+# TZ= pins wall-clock regardless of host timezone. Runs BEFORE the 02:30
+# pg_dump so the fresh rows are included in the same night's backup.
+# Install (idempotent) with: sudo ./biz-metrics/install-biz-metrics.sh contabo-b
+#
+# Optional hourly "today so far" illuminator for vmui (partial UTC day;
+# durable history still comes from the nightly run). Uncomment to enable.
+
+TZ=Europe/Berlin
 30 1 * * *  biz-metrics  /data/biz-metrics/run.sh >> /var/log/biz-metrics.log 2>&1
+# 5 * * * *  biz-metrics  /data/biz-metrics/run.sh --today-so-far >> /var/log/biz-metrics.log 2>&1

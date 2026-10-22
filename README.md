@@ -36,6 +36,7 @@ docker-compose.test.yml       # CI drills
 configs/vm/prometheus.yml     # scrape targets
 configs/vector/contabo-{a,b}/
 alerts/                       # rules + deferred destinations
+biz-metrics/                  # nightly business rollup (collect-only, t1127u)
 scripts/drill_alerter.py      # thin custom layer under test
 tests/                        # A1–A8 fault-injection
 ```
