@@ -26,11 +26,13 @@ biz-metrics/
   cron/biz-metrics.cron      contabo-b cron (Europe/Berlin 01:30 + optional hourly)
   cron/biz-metrics.env.example
   sql/relay/                 Relay P0 metrics (tx/campaign/bounce/complaint)
+  sql/aishl/                 AISHL P0 metrics (lesson/signup/paid+MRR, t1127u-D)
   cron/run.sh                cron wrapper (sources /data/biz-metrics/env)
   install-biz-metrics.sh     operator installer (copies files, cron, env stub)
   check-dump.sh              verifies pg-shared dump list includes biz_metrics
   tests/test_biz_metrics_cmp.py       CMP P0 tests (live PG fixtures optional)
   tests/test_biz_metrics_relay.py     Relay P0 tests (live PG fixtures optional)
+  tests/test_biz_metrics_aishl.py     AISHL P0 tests (live PG fixtures optional)
   tests/test_biz_metrics_plumbing.py  plumbing tests (no DB, no secrets)
 ```
 
@@ -133,11 +135,60 @@ psql "$BIZ_METRICS_STORE_DSN" -c "SELECT dims, value FROM metric_daily
   WHERE day='2026-10-20' AND project='relay' AND metric='relay_tx_messages';"
 ```
 
+## Metrics (P0 AISHL, t1127u-D — intake 8cc61eb4, parent de12a818)
+
+| metric | source (pg-shared / DB aisl) | dims | VM series |
+|---|---|---|---|
+| `aishl_lesson_opens` | `analytics_useractivity` lesson_open → unit → course | course | `biz_aishl_lesson_opens` |
+| `aishl_active_learners` | distinct users, lesson_open (+resource_view for `all`) | course, grain(day/week) | `biz_aishl_active_learners` |
+| `aishl_signups` | `analytics_useractivity` signup ⋈ `analytics_userattribution` | utm_source | `biz_aishl_signups` |
+| `aishl_paid_conversions` | `payments_conversionattribution` | tier, billing_period, utm_source | `biz_aishl_paid_conversions` |
+| `aishl_new_mrr_eur` | `SUM(payments_conversionattribution.mrr_eur)` | tier, billing_period, utm_source | `biz_aishl_new_mrr_eur` |
+
+- Lessons are SESSIONS, not pageviews: the app dedupes per user × unit
+  within 30 min (`record_lesson_open`, `dedupe_minutes=30`). Unresolvable
+  units (deleted course rows, non-numeric ids) land in `course='unknown'`.
+- `grain` on `aishl_active_learners` is a deliberate addition to the
+  catalog: weekly WAU rows (day = ISO Monday) would otherwise collide with
+  the daily Monday row under the PK. The week row is rewritten daily as the
+  week fills; D-1..D-7 settles the final value. WAU is overall only.
+- `tier` NULL (one-off course purchase) → `'course'`; blank
+  `billing_period` → `'one-off'`; blank `utm_source` → `'none'`;
+  one-off `mrr_eur` NULL sums to 0. Pre-shipping subscriptions have no
+  `ConversionAttribution` rows (no backfill) — those days read 0, not gaps.
+- No PII labels: dims carry only the declared low-cardinality labels
+  (tests reject `user_id` / `email` / `ip` in any dims expression).
+- Table names verified 2026-10-22 against the aisl checkout:
+  `analytics_useractivity`, `analytics_userattribution` (PK `user_id`),
+  `cb_curriculum_unit → cb_curriculum_module → cb_curriculum_course (slug)`
+  (app label `cb_curriculum`), `payments_conversionattribution`,
+  `payments_tier (slug)`.
+
+Run with AISHL: add `BIZ_METRICS_AISHL_DSN=...` to the env from
+`cron/biz-metrics.env.example`; the runner picks up `--metrics
+aishl_lesson_opens aishl_active_learners aishl_signups
+aishl_paid_conversions aishl_new_mrr_eur` (default = all registered metrics).
+
+Hand-check one historic day (pg-shared, DB aisl):
+
+```bash
+psql "$BIZ_METRICS_AISHL_DSN" -c "SELECT c.slug, COUNT(*) FROM analytics_useractivity ua
+  LEFT JOIN cb_curriculum_unit u ON ua.object_type='unit'
+    AND u.id = CASE WHEN ua.object_id ~ '^[0-9]+\$' THEN ua.object_id::integer END
+  LEFT JOIN cb_curriculum_module m ON m.id = u.module_id
+  LEFT JOIN cb_curriculum_course c ON c.id = m.course_id
+  WHERE ua.event_type='lesson_open'
+    AND ua.occurred_at >= '2026-10-20+00' AND ua.occurred_at < '2026-10-21+00'
+  GROUP BY 1;"
+psql "$BIZ_METRICS_STORE_DSN" -c "SELECT dims, value FROM metric_daily
+  WHERE day='2026-10-20' AND project='aishl' AND metric='aishl_lesson_opens';"
+```
+
 ## Deploy checklist (operator, contabo-b)
 
 1. `CREATE DATABASE biz_metrics` on pg-shared; apply `schema.sql`;
    `CREATE ROLE biz_ro` (+ `SELECT` on listed tables in `cmp`, `website`,
-   and on pg-relay / DB `relay`), `biz_rw` (write on `biz_metrics` only). Full
+   `aisl`, and on pg-relay / DB `relay`), `biz_rw` (write on `biz_metrics` only). Full
    grants in `roles.sql`. Credentials live in the existing secrets path on
    contabo-b, never in this repo.
 2. Add `biz_metrics` to the pg-shared nightly dump list
@@ -166,4 +217,5 @@ via the normal `node` scrape job instead of the import endpoint.
 ```bash
 python3 -m pytest biz-metrics/tests/ -v          # plumbing (no DB, no docker)
 BIZMETRICS_TEST_DSN=... python3 -m pytest biz-metrics/tests/test_biz_metrics_cmp.py -v  # + live PG
+python3 -m pytest biz-metrics/tests/test_biz_metrics_aishl.py -v  # AISHL: auto-starts own PG:16 container (needs docker)
 ```

@@ -12,6 +12,7 @@ Env:
   BIZ_METRICS_CMP_DSN      psycopg DSN for the CMP app DB (read role biz_ro)
   BIZ_METRICS_WEBSITE_DSN  psycopg DSN for the website app DB (read role biz_ro)
   BIZ_METRICS_RELAY_DSN    psycopg DSN for the Relay app DB on pg-relay (read role biz_ro)
+  BIZ_METRICS_AISHL_DSN    psycopg DSN for the aisl app DB (read role biz_ro)
   VM_PUSH_URL              e.g. http://10.100.0.1:8428/api/v1/import/prometheus
 
 Registry entries name their source DSN env; product intakes (relay, AISHL)
@@ -102,6 +103,38 @@ REGISTRY = {
         "relay",
         "BIZ_METRICS_RELAY_DSN",
         os.path.join("relay", "relay_complaint_rate.sql"),
+        "",
+    ),
+    # AISHL P0 (t1127u-D, intake 8cc61eb4): single app DB (aisl), so empty
+    # platform disables injection -- the SQL dims are the full label set.
+    "aishl_lesson_opens": (
+        "aishl",
+        "BIZ_METRICS_AISHL_DSN",
+        os.path.join("aishl", "aishl_lesson_opens.sql"),
+        "",
+    ),
+    "aishl_active_learners": (
+        "aishl",
+        "BIZ_METRICS_AISHL_DSN",
+        os.path.join("aishl", "aishl_active_learners.sql"),
+        "",
+    ),
+    "aishl_signups": (
+        "aishl",
+        "BIZ_METRICS_AISHL_DSN",
+        os.path.join("aishl", "aishl_signups.sql"),
+        "",
+    ),
+    "aishl_paid_conversions": (
+        "aishl",
+        "BIZ_METRICS_AISHL_DSN",
+        os.path.join("aishl", "aishl_paid_conversions.sql"),
+        "",
+    ),
+    "aishl_new_mrr_eur": (
+        "aishl",
+        "BIZ_METRICS_AISHL_DSN",
+        os.path.join("aishl", "aishl_new_mrr_eur.sql"),
         "",
     ),
 }

@@ -101,6 +101,8 @@ def test_registry_sql_files_exist_and_platforms_cover_both_dbs():
     assert {p for m, p in platforms.items() if m.startswith("cmp_")} == {"cmp", "website"}
     # Relay P0 (intake d9d8bd81): no platform dim; empty string disables injection
     assert {p for m, p in platforms.items() if m.startswith("relay_")} == {""}
+    # AISHL P0 (intake 8cc61eb4): likewise single DB (aisl), no platform dim
+    assert {p for m, p in platforms.items() if m.startswith("aishl_")} == {""}
     # one SQL file serves both DBs for homework; registrations diverge
     assert (
         rollup.REGISTRY["cmp_homework_submissions"][2]

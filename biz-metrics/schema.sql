@@ -48,4 +48,18 @@ CREATE INDEX IF NOT EXISTS metric_daily_project_metric_day_idx
 --   GRANT SELECT (id, slug) ON clients TO biz_ro;
 --   GRANT SELECT, INSERT, UPDATE ON metric_daily TO biz_rw;
 --   GRANT SELECT ON metric_daily TO biz_ro;
---   (full per-DB list in roles.sql; AISHL tables follow the same pattern)
+--   (full per-DB list in roles.sql)
+--   -- pg-shared / DB aisl (P0 AISHL intake 8cc61eb4):
+--   GRANT CONNECT ON DATABASE aisl TO biz_ro;
+--   GRANT USAGE ON SCHEMA public TO biz_ro;
+--   GRANT SELECT (id, user_id, event_type, occurred_at, object_type, object_id)
+--     ON analytics_useractivity TO biz_ro;
+--   GRANT SELECT (user_id, first_touch_utm_source)
+--     ON analytics_userattribution TO biz_ro;
+--   GRANT SELECT (id, module_id) ON cb_curriculum_unit TO biz_ro;
+--   GRANT SELECT (id, course_id) ON cb_curriculum_module TO biz_ro;
+--   GRANT SELECT (id, slug) ON cb_curriculum_course TO biz_ro;
+--   GRANT SELECT (id, tier_id, billing_period, mrr_eur,
+--                 first_touch_utm_source, created_at)
+--     ON payments_conversionattribution TO biz_ro;
+--   GRANT SELECT (id, slug) ON payments_tier TO biz_ro;
