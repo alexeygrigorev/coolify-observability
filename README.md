@@ -55,6 +55,17 @@ docker compose -f docker-compose.test.yml --profile full down -v
 - `/data/obs-exporters/docker-compose.yml` on `.141`
 - Do **not** start `/data/openobserve/**` (STOPPED)
 
+## Retention + S3 (t1031u)
+
+| Tier | Policy |
+|------|--------|
+| Hot local | VM + VL **`-retentionPeriod=2d`** (yesterday stays in vmui) |
+| Daily archive | day-before-yesterday → gzip → `s3://…/coolify/obs/{metrics,logs}/YYYY/MM/DD/` |
+| S3 | lifecycle **14 days** on `coolify/obs/` |
+
+Cron on `.163`: `00:15` Europe/Berlin → `/usr/local/sbin/coolify-obs-archive.sh`.  
+Details: [`docs/retention-s3.md`](docs/retention-s3.md). Installer: `scripts/install-coolify-obs-archive.sh`.
+
 ## License
 
 MIT

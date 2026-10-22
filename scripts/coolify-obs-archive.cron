@@ -1,0 +1,7 @@
+# Daily Contabo obs day archive → S3 — contabo-a (.163)
+# Archives day-before-yesterday (Europe/Berlin) shortly after midnight so
+# -retentionPeriod=2d still holds nearly the full closed day.
+# TZ= pins wall clock regardless of host timezone.
+
+TZ=Europe/Berlin
+15 0 * * * root /usr/local/sbin/coolify-obs-archive.sh >> /var/log/coolify-obs-archive.log 2>&1

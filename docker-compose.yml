@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-metrics-data
-      - -retentionPeriod=30d
+      - -retentionPeriod=2d
       - -memory.allowedBytes=134217728
       - -search.maxUniqueTimeseries=300000
       - -promscrape.config=/etc/vm/prometheus.yml
@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-logs-data
-      - -retentionPeriod=14d
+      - -retentionPeriod=2d
       - -memory.allowedBytes=134217728
       - -httpListenAddr=:9428
     volumes:

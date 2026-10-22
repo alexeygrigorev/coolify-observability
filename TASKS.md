@@ -19,4 +19,6 @@ Plan: [849afb15-98ec-437c-a824-d96e4e8e800b](https://hub.dtcdev.click/#/intake/8
 | 8 | Contabo Coolify deploy | `6e4fc316-1551-4c25-a097-1bbf78949c84` | [hub](https://hub.dtcdev.click/#/intake/6e4fc316-1551-4c25-a097-1bbf78949c84) | VM+VL live on `.163` |
 | 9 | Pass 2 Astra/Argon/Opus cross-review | `251fdf16-fec5-4d13-b074-3333bfbf7cad` | [hub](https://hub.dtcdev.click/#/intake/251fdf16-fec5-4d13-b074-3333bfbf7cad) | open |
 
+| 10 | Obs retention + S3 archive (2d hot / 14d S3) | `t1031u` | — | `docs/retention-s3.md`; cron on `.163` |
+
 Never write sprint reports into dataops-knowledge.
