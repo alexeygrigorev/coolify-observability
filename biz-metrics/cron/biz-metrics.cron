@@ -1,0 +1,6 @@
+# biz-metrics nightly rollup — contabo-b, Europe/Berlin 01:30.
+# Recomputes D-1..D-7 (late submits/resubmit edits settle within days).
+# Optional hourly "today so far" run feeds vmui only (--window 0 is NOT
+# supported; hourly uses --since today --no-push? no — hourly should not
+# rewrite history; keep nightly-only until the hourly need is confirmed).
+30 1 * * *  biz-metrics  /data/biz-metrics/run.sh >> /var/log/biz-metrics.log 2>&1
