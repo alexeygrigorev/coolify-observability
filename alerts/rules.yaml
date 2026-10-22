@@ -26,3 +26,12 @@ rules:
     expr: up{job="node"} == 0
     for: 2m
     severity: warning
+
+  # t1119u — weekly Contabo→alt-host fast PG raise dead-man (~8d)
+  # Primary notifier: machine-management monitors/dr-raise-stale-check.sh (msmtp→SES).
+  # This PromQL is for vmui / future vmalert.
+  - id: A9_dr_fast_pg_raise_stale
+    type: promql
+    expr: (time() - max(dr_fast_pg_raise_last_success_unixtime)) > 691200 or absent(dr_fast_pg_raise_last_success_unixtime)
+    for: 1h
+    severity: critical
