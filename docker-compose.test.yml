@@ -60,7 +60,7 @@ services:
     volumes:
       - ./scripts/drill_alerter.py:/app/drill_alerter.py:ro
     environment:
-      ALERT_TO: "dtcdev+5xx@mail.grokbot.com,dev@dtcdev.click"
+      ALERT_TO: "dev@dtcdev.click"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       HTTP_URL: http://target-http/

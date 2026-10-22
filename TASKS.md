@@ -5,7 +5,7 @@ Plan: [849afb15-98ec-437c-a824-d96e4e8e800b](https://hub.dtcdev.click/#/intake/8
 
 **Live Contabo stack (t1016u peer pivot):** VictoriaMetrics + VictoriaLogs on `.163` (vmui) + Vector×2. OpenObserve partial install **stopped**.  
 **Plan vote was 2/3 OpenObserve**; Argon VM+VL + later steering won the Contabo cutover.  
-**Alert email (wire later):** `dtcdev+5xx@mail.grokbot.com` + `dev@dtcdev.click` (CI drills already assert).
+**Alert email (t1029u):** ONLY `dev@dtcdev.click` (CI drill A8 asserts single recipient).
 
 | # | Title | Hub id | Link | Notes |
 |---|-------|--------|------|-------|

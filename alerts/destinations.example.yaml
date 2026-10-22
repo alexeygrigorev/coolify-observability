@@ -1,12 +1,11 @@
 # Alert email destinations (wired on Contabo via coolify-healthcheck + SES SMTP).
-# Preferred tagged inbox + keep working path. Ask Alexey later for final prod mailbox.
+# Prod: ONLY dev@dtcdev.click (t1029u — removed dtcdev+5xx@mail.grokbot.com).
 destinations:
-  - email: dtcdev+5xx@mail.grokbot.com
   - email: dev@dtcdev.click
 smtp_mode: ses
 smtp_secret: shared/ses-smtp-credentials   # AWS Secrets Manager (eu-west-1)
 alert_from: noreply@datatalks.club
-status: wired-via-coolify-healthcheck-t1028u
+status: wired-via-coolify-healthcheck-t1029u
 notes: |
   In-band vmalert/Alertmanager still optional. Dead-man path is
   machine-management/monitors/coolify-healthcheck on both Contabo hosts

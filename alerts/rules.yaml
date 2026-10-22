@@ -1,5 +1,5 @@
 # Declarative alert rules for obs-alertd / vmalert.
-# Email destinations: DEFERRED (wire later). Prefer dtcdev+5xx@mail.grokbot.com + dev@dtcdev.click.
+# Email destinations: ONLY dev@dtcdev.click (t1029u).
 rules:
   - id: A1_https_down
     type: http

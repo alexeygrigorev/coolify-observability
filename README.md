@@ -18,12 +18,13 @@ Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi.
 
 ## Alert destinations
 
-**Wired (t1028u)** via `coolify-healthcheck` → msmtp → SES (`noreply@datatalks.club`):
+**Wired (t1029u)** via `coolify-healthcheck` → msmtp → SES (`noreply@datatalks.club`):
 
-1. `dtcdev+5xx@mail.grokbot.com` (preferred tagged; ask Alexey later for final prod mailbox)
-2. `dev@dtcdev.click` (keep working path)
+1. `dev@dtcdev.click` — **only** prod alert recipient
 
-See `alerts/destinations.example.yaml`. CI drills still assert both recipients via Mailpit.
+`dtcdev+5xx@mail.grokbot.com` removed from Contabo prod alert lists and repo defaults.
+
+See `alerts/destinations.example.yaml`. CI drill A8 asserts the single recipient via Mailpit.
 Dead-man also probes VM/VL `/health` from both Contabo hosts.
 
 ## Layout
