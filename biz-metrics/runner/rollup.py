@@ -11,6 +11,7 @@ Env:
   BIZ_METRICS_STORE_DSN    psycopg DSN for biz_metrics (write role biz_rw)
   BIZ_METRICS_CMP_DSN      psycopg DSN for the CMP app DB (read role biz_ro)
   BIZ_METRICS_WEBSITE_DSN  psycopg DSN for the website app DB (read role biz_ro)
+  BIZ_METRICS_RELAY_DSN    psycopg DSN for the Relay app DB (read role biz_ro)
   VM_PUSH_URL              e.g. http://10.100.0.1:8428/api/v1/import/prometheus
 """
 
@@ -53,6 +54,32 @@ REGISTRY = {
         "BIZ_METRICS_WEBSITE_DSN",
         os.path.join("cmp", "cmp_course_registrations_website.sql"),
         "website",
+    ),
+    # Relay P0 (t1127u, intake d9d8bd81): no platform dim; dims carry
+    # client/status/template_key/stream. Empty platform disables injection.
+    "relay_tx_messages": (
+        "relay",
+        "BIZ_METRICS_RELAY_DSN",
+        os.path.join("relay", "relay_tx_messages.sql"),
+        "",
+    ),
+    "relay_campaign_recipients": (
+        "relay",
+        "BIZ_METRICS_RELAY_DSN",
+        os.path.join("relay", "relay_campaign_recipients.sql"),
+        "",
+    ),
+    "relay_bounce_rate": (
+        "relay",
+        "BIZ_METRICS_RELAY_DSN",
+        os.path.join("relay", "relay_bounce_rate.sql"),
+        "",
+    ),
+    "relay_complaint_rate": (
+        "relay",
+        "BIZ_METRICS_RELAY_DSN",
+        os.path.join("relay", "relay_complaint_rate.sql"),
+        "",
     ),
 }
 
@@ -151,7 +178,11 @@ def run_source(
         for row_day, dims, value in fetched:
             if isinstance(dims, str):
                 dims = json.loads(dims)
-            dims = {"platform": platform, **dict(dims)}
+            if value is None:
+                continue  # NULL rate (zero-send window): nothing to store/push
+            dims = dict(dims)
+            if platform:
+                dims = {"platform": platform, **dims}
             if not dry_run:
                 with store_conn.cursor() as cur:
                     cur.execute(

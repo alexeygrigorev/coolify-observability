@@ -93,11 +93,14 @@ def test_render_sample_escapes_labels():
 def test_registry_sql_files_exist_and_platforms_cover_both_dbs():
     for metric, (project, _dsn, relpath, platform) in rollup.REGISTRY.items():
         assert (ROOT / "sql" / relpath).exists(), metric
-        assert project == "cmp"
+        if metric.startswith("cmp_"):
+            assert project == "cmp"
     platforms = {
         m: rollup.REGISTRY[m][3] for m in rollup.REGISTRY
     }
-    assert set(platforms.values()) == {"cmp", "website"}
+    assert {p for m, p in platforms.items() if m.startswith("cmp_")} == {"cmp", "website"}
+    # Relay P0 (intake d9d8bd81): no platform dim; empty string disables injection
+    assert {p for m, p in platforms.items() if m.startswith("relay_")} == {""}
     # one SQL file serves both DBs for homework; registrations diverge
     assert (
         rollup.REGISTRY["cmp_homework_submissions"][2]

@@ -19,7 +19,9 @@ biz-metrics/
   runner/requirements.txt
   cron/biz-metrics.cron      contabo-b cron line (Europe/Berlin 01:30)
   cron/biz-metrics.env.example
+  sql/relay/                 Relay P0 metrics (tx/campaign/bounce/complaint)
   tests/test_biz_metrics_cmp.py
+  tests/test_biz_metrics_relay.py
 ```
 
 ## Data model
@@ -64,7 +66,7 @@ courses_registrationcampaign`, course dim = `courses_course` (Cohort).
 ```bash
 pip install -r runner/requirements.txt
 export BIZ_METRICS_STORE_DSN=... BIZ_METRICS_CMP_DSN=... \
-       BIZ_METRICS_WEBSITE_DSN=... VM_PUSH_URL=http://10.100.0.1:8428/api/v1/import/prometheus
+       BIZ_METRICS_WEBSITE_DSN=... BIZ_METRICS_RELAY_DSN=... VM_PUSH_URL=http://10.100.0.1:8428/api/v1/import/prometheus
 python3 runner/rollup.py --window 7                       # nightly: D-1..D-7
 python3 runner/rollup.py --since 2024-01-01 --push        # backfill, then push
 python3 runner/rollup.py --since 2026-10-21 --no-push --dry-run   # hand-check day
@@ -79,12 +81,43 @@ python3 runner/rollup.py --since 2026-10-20 --until 2026-10-21 --no-push --dry-r
 VM check: `biz_cmp_homework_submissions` / `biz_cmp_course_registrations`
 in vmui for yesterday.
 
+## Metrics (P0 Relay, t1127u — intake d9d8bd81, parent de12a818)
+
+| metric | source (pg-relay / DB relay) | dims | VM series |
+|---|---|---|---|
+| `relay_tx_messages` | `transactional_messages.created_at` ⋈ `clients` | client, status, template_key | `biz_relay_tx_messages` |
+| `relay_campaign_recipients` | `campaign_recipients` ⋈ `campaigns.client_id` ⋈ `clients` | client, status | `biz_relay_campaign_recipients` |
+| `relay_bounce_rate` | `email_events` sent vs bounce | client, stream=tx\|campaign | `biz_relay_bounce_rate` |
+| `relay_complaint_rate` | `email_events` sent vs complaint | client, stream=tx\|campaign | `biz_relay_complaint_rate` |
+
+- `sent` campaign recipients count by `sent_at` day; every other terminal
+  status by `updated_at` day. `pending` excluded.
+- Stream: `tx` iff `transactional_message_id IS NOT NULL`, `campaign` iff
+  `campaign_id IS NOT NULL`. `NULL` rate on zero-send days is skipped
+  (nothing stored/pushed).
+- No PII labels: never email, user_id, IP, contact, or `campaign_id`.
+  Table names verified against `relay/mailing/models.py` (`db_table`).
+
+Run with Relay: add `BIZ_METRICS_RELAY_DSN=...` to the env from
+`cron/biz-metrics.env.example`; the runner picks up `--metrics
+relay_tx_messages relay_campaign_recipients relay_bounce_rate
+relay_complaint_rate` (default = all registered metrics).
+
+Hand-check one historic day (pg-relay):
+
+```bash
+psql "$BIZ_METRICS_RELAY_DSN" -c "SELECT status, COUNT(*) FROM transactional_messages
+  WHERE created_at >= '2026-10-20+00' AND created_at < '2026-10-21+00' GROUP BY 1;"
+psql "$BIZ_METRICS_STORE_DSN" -c "SELECT dims, value FROM metric_daily
+  WHERE day='2026-10-20' AND project='relay' AND metric='relay_tx_messages';"
+```
+
 ## Deploy checklist (operator, contabo-b)
 
 1. `CREATE DATABASE biz_metrics` on pg-shared; apply `schema.sql`;
-   `CREATE ROLE biz_ro` (+ `SELECT` on listed tables in `cmp`, `website`),
-   `biz_rw` (write on `biz_metrics` only). Credentials live in the
-   existing secrets path on contabo-b, never in this repo.
+   `CREATE ROLE biz_ro` (+ `SELECT` on listed tables in `cmp`, `website`,
+   and on pg-relay / DB `relay`), `biz_rw` (write on `biz_metrics` only).
+   Credentials live in the existing secrets path on contabo-b, never in this repo.
 2. Add `biz_metrics` to the pg-shared nightly dump list.
 3. Install cron + env; run backfill from earliest rows; confirm
    `metric_daily` rows, vmui yesterday values, and one hand-SQL match.

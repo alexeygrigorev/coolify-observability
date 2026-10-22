@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS metric_daily (
     PRIMARY KEY (day, project, metric, dims)
 );
 
+CREATE INDEX IF NOT EXISTS metric_daily_project_metric_day_idx
+    ON metric_daily (project, metric, day DESC);
+
 -- Operator roles (review names against local secrets path before running):
 --   CREATE ROLE biz_ro WITH LOGIN PASSWORD '<from secrets>';
 --   GRANT CONNECT ON DATABASE cmp TO biz_ro;      -- repeat: website
@@ -28,5 +31,16 @@ CREATE TABLE IF NOT EXISTS metric_daily (
 --   GRANT SELECT (id, campaign_id, course_id, status, created_at)
 --     ON courses_courseregistration TO biz_ro;    -- CMP only; website has no status col
 --   GRANT SELECT (id, slug) ON courses_registrationcampaign TO biz_ro;
+--   -- pg-relay / DB relay (P0 Relay intake d9d8bd81):
+--   GRANT CONNECT ON DATABASE relay TO biz_ro;
+--   GRANT USAGE ON SCHEMA public TO biz_ro;
+--   GRANT SELECT (id, client_id, status, template_key, created_at)
+--     ON transactional_messages TO biz_ro;
+--   GRANT SELECT (id, client_id, status, sent_at) ON campaigns TO biz_ro;
+--   GRANT SELECT (id, campaign_id, status, sent_at, updated_at)
+--     ON campaign_recipients TO biz_ro;
+--   GRANT SELECT (id, client_id, campaign_id, transactional_message_id,
+--     event_type, created_at) ON email_events TO biz_ro;
+--   GRANT SELECT (id, slug) ON clients TO biz_ro;
 --   CREATE ROLE biz_rw WITH LOGIN PASSWORD '<from secrets>';
 --   GRANT ALL ON metric_daily TO biz_rw;
