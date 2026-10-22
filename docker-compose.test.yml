@@ -1,94 +1,79 @@
-# Alert fault-injection drill stack — OpenObserve + Vector + Mailpit
-# Do NOT point at Contabo prod.
-name: coolify-obs-alert-drills
+# CI/local fault-injection — VictoriaMetrics + VictoriaLogs + Mailpit + thin alerter
+name: coolify-obs-drills
 
 services:
-  openobserve:
-    image: openobserve/openobserve:v1.1.2
-    environment:
-      ZO_ROOT_USER_EMAIL: root@example.com
-      ZO_ROOT_USER_PASSWORD: Complexpass#123
-      ZO_DATA_DIR: /data
-      ZO_SMTP_HOST: mailpit
-      ZO_SMTP_PORT: "1025"
-      ZO_SMTP_USER_NAME: ""
-      ZO_SMTP_PASSWORD: ""
-      ZO_SMTP_FROM_EMAIL: obs-drill@example.com
-      ZO_TELEMETRY: "false"
-    ports:
-      - "5080:5080"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5080/healthz"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 20s
-
-  vector:
-    image: timberio/vector:0.60.0-debian
-    user: root
-    command: ["--config", "/etc/vector/vector.yaml"]
-    volumes:
-      - ./vector/test/vector.yaml:/etc/vector/vector.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      OPENOBSERVE_URL: http://openobserve:5080
-      OPENOBSERVE_USER: root@example.com
-      OPENOBSERVE_PASSWORD: Complexpass#123
-    depends_on:
-      openobserve:
-        condition: service_healthy
-
   mailpit:
     image: axllent/mailpit:v1.21
-    ports:
-      - "1025:1025"
-      - "8025:8025"
+    ports: ["1025:1025", "8025:8025"]
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=1d
+      - -memory.allowedBytes=67108864
+      - -promscrape.config=/etc/vm/prometheus.yml
+      - -httpListenAddr=:8428
+    volumes:
+      - ./configs/vm/prometheus.test.yml:/etc/vm/prometheus.yml:ro
+    ports: ["8428:8428"]
+    mem_limit: 128m
+
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.15.0-victorialogs
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=1d
+      - -memory.allowedBytes=67108864
+      - -httpListenAddr=:9428
+    ports: ["9428:9428"]
+    mem_limit: 128m
 
   target-http:
     image: nginx:1.27-alpine
-    profiles: ["targets"]
-    ports:
-      - "8080:80"
-    labels:
-      coolify.managed: "false"
-      drill.target: "http"
+    profiles: ["targets", "full"]
+    ports: ["8080:80"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
+      interval: 3s
+      timeout: 2s
+      retries: 5
 
   target-pg:
     image: postgres:16-alpine
-    profiles: ["targets"]
+    profiles: ["targets", "full"]
     environment:
       POSTGRES_PASSWORD: drill
       POSTGRES_USER: drill
       POSTGRES_DB: drill
-    ports:
-      - "5432:5432"
-    labels:
-      drill.target: "pg"
+    ports: ["5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U drill"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
-      retries: 5
+      retries: 10
 
-  # Tiny custom "alerter" for drills when OO SMTP/alert UI not yet scripted
   drill-alerter:
-    image: python:3.12-alpine
-    profiles: ["targets"]
+    image: python:3.12-slim
+    profiles: ["full"]
     working_dir: /app
     volumes:
       - ./scripts/drill_alerter.py:/app/drill_alerter.py:ro
-    command: ["python", "/app/drill_alerter.py"]
     environment:
+      ALERT_TO: "dtcdev+5xx@mail.grokbot.com,dev@dtcdev.click"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
-      ALERT_TO: dev@dtcdev.click
-    # real address set in test env
+      HTTP_URL: http://target-http/
+      PG_HOST: target-pg
+      OO_HEALTH_URL: http://victoria-metrics:8428/health
+      POLL_INTERVAL: "2"
+    command: ["python", "-u", "/app/drill_alerter.py"]
+    depends_on:
+      - mailpit
+      - target-http
+      - target-pg
+      - victoria-metrics
+
 networks:
   default:
     name: coolify-obs-drills

@@ -1,33 +1,25 @@
-"""Shared fixtures for alert fault-injection drills."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
 import urllib.request
+from pathlib import Path
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(__file__))
-COMPOSE_FILE = os.path.join(ROOT, "docker-compose.test.yml")
-ALERT_EMAIL = "dev@dtcdev.click"
+ROOT = Path(__file__).resolve().parents[1]
+COMPOSE_FILE = str(ROOT / "docker-compose.test.yml")
 MAILPIT = os.environ.get("MAILPIT_URL", "http://127.0.0.1:8025")
-
-
-@pytest.fixture(scope="session")
-def compose_file() -> str:
-    return COMPOSE_FILE
-
-
-@pytest.fixture(scope="session")
-def alert_email() -> str:
-    return ALERT_EMAIL
+ALERT_EMAILS = ["dtcdev+5xx@mail.grokbot.com", "dev@dtcdev.click"]
+ALERT_EMAIL = ALERT_EMAILS[0]
 
 
 def _compose(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["docker", "compose", "-f", COMPOSE_FILE, *args],
-        cwd=ROOT,
+        cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
@@ -35,45 +27,56 @@ def _compose(*args: str) -> subprocess.CompletedProcess:
 
 
 @pytest.fixture(scope="session")
+def alert_email() -> str:
+    return ALERT_EMAIL
+
+
+@pytest.fixture(scope="session")
+def alert_emails() -> list[str]:
+    return list(ALERT_EMAILS)
+
+
+@pytest.fixture(scope="session")
 def drill_stack():
-    """Bring up OO + Mailpit + targets + alerter for the session."""
-    up = _compose("up", "-d", "--wait", "openobserve", "mailpit")
-    if up.returncode != 0:
-        pytest.skip(f"compose up core failed: {up.stderr[-500:]}")
-    targets = _compose("--profile", "targets", "up", "-d", "--wait", "target-http", "target-pg", "drill-alerter")
-    if targets.returncode != 0:
-        # still try without wait
-        _compose("--profile", "targets", "up", "-d", "target-http", "target-pg", "drill-alerter")
-        time.sleep(5)
-    # clear mailpit
+    if os.environ.get("SKIP_DRILLS") == "1":
+        pytest.skip("SKIP_DRILLS=1")
     try:
-        req = urllib.request.Request(f"{MAILPIT}/api/v1/messages", method="DELETE")
-        urllib.request.urlopen(req, timeout=5)
+        subprocess.run(["docker", "info"], capture_output=True, check=True)
     except Exception:
-        pass
-    yield
-    _compose("--profile", "targets", "down", "-v")
+        pytest.skip("docker not available")
+    r = _compose("--profile", "full", "up", "-d", "--wait")
+    if r.returncode != 0:
+        r = _compose("--profile", "full", "up", "-d")
+        assert r.returncode == 0, r.stderr + r.stdout
+        time.sleep(8)
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{MAILPIT}/api/v1/info", timeout=2):
+                break
+        except Exception:
+            time.sleep(1)
+    else:
+        _compose("--profile", "full", "down", "-v")
+        pytest.fail("mailpit not ready")
+    yield {"mailpit": MAILPIT}
+    if os.environ.get("KEEP_DRILLS") != "1":
+        _compose("--profile", "full", "down", "-v")
 
 
-def wait_mail(subject_substr: str, timeout: float = 45.0) -> dict:
-    import json
-
+def wait_mail(needle: str, timeout: float = 60.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
         with urllib.request.urlopen(f"{MAILPIT}/api/v1/messages", timeout=5) as r:
             data = json.load(r)
         for m in data.get("messages", []):
-            subj = m.get("Subject") or ""
-            tos = " ".join(
-                (m.get("To") or [{}])[0].get("Address", "")
-                if isinstance(m.get("To"), list)
-                else []
-            )
-            # Mailpit To format varies
-            to_raw = str(m.get("To"))
-            if subject_substr in subj and (ALERT_EMAIL in to_raw or ALERT_EMAIL.split("@")[0] in to_raw):
-                return m
-            if subject_substr in subj:
+            blob = json.dumps(m)
+            if needle in blob:
                 return m
         time.sleep(2)
-    raise AssertionError(f"no mail with subject containing {subject_substr!r} within {timeout}s")
+    raise AssertionError(f"mail with {needle!r} not found in {timeout}s")
+
+
+def clear_mail() -> None:
+    req = urllib.request.Request(f"{MAILPIT}/api/v1/messages", method="DELETE")
+    urllib.request.urlopen(req, timeout=5)

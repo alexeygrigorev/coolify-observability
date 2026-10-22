@@ -1,0 +1,17 @@
+# Collectors on contabo-b (.141): Vector → VL; keep node + postgres exporters
+name: coolify-obs-edge
+
+services:
+  vector-b:
+    image: timberio/vector:0.60.0-debian
+    container_name: vector-contabo-b
+    restart: unless-stopped
+    user: root
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - /data/obs-exporters/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /data/obs-exporters/vector-data:/var/lib/vector
+    network_mode: host
+    mem_limit: 128m
+    cpus: "0.25"

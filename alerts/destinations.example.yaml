@@ -1,0 +1,8 @@
+# Wire later (email address fix deferred per steering).
+# destinations:
+#   - email: dtcdev+5xx@mail.grokbot.com
+#   - email: dev@dtcdev.click
+# smtp_mode: ses
+# alert_from: noreply@datatalks.club
+destinations: []
+status: deferred

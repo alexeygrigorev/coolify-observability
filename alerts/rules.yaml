@@ -1,0 +1,28 @@
+# Declarative alert rules for obs-alertd / vmalert.
+# Email destinations: DEFERRED (wire later). Prefer dtcdev+5xx@mail.grokbot.com + dev@dtcdev.click.
+rules:
+  - id: A1_https_down
+    type: http
+    targets:
+      - name: relay
+        url: https://relay.datatalks.club/health/
+      - name: relay-dev
+        url: https://dev.relay.datatalks.club/health/
+      - name: courses
+        url: https://courses.datatalks.club/
+      - name: website
+        url: https://datatalks.club/
+    for: 30s
+    severity: critical
+
+  - id: A4_postgres_down
+    type: promql
+    expr: up{job="postgres"} == 0
+    for: 1m
+    severity: critical
+
+  - id: A6_scrape_gap
+    type: promql
+    expr: up{job="node"} == 0
+    for: 2m
+    severity: warning

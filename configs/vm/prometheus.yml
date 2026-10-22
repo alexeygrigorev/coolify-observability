@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  external_labels:
+    fleet: contabo-coolify
+    env: production
+
+scrape_configs:
+  - job_name: victoria-metrics
+    static_configs:
+      - targets: ["127.0.0.1:8428"]
+        labels: { host: contabo-a }
+
+  - job_name: victoria-logs
+    static_configs:
+      - targets: ["10.100.0.1:9428"]
+        labels: { host: contabo-a }
+
+  - job_name: node
+    static_configs:
+      - targets: ["10.100.0.2:9100"]
+        labels: { host: contabo-b, role: postgres }
+      # .163: Vector host_metrics also; optional local node if present
+      - targets: ["10.100.0.1:9100"]
+        labels: { host: contabo-a, role: apps }
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["10.100.0.2:9101"]
+        labels: { host: contabo-b }
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["10.100.0.2:9187"]
+        labels: { host: contabo-b, instance_name: pg-relay }
+      - targets: ["10.100.0.2:9188"]
+        labels: { host: contabo-b, instance_name: pg-shared }

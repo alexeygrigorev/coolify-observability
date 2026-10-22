@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal SMTP alerter for Docker fault-injection drills (A1–A8).
-
-Polls HTTP target / Postgres / optional OO health and emails ALERT_TO via SMTP
-(Mailpit in CI). Thin custom layer — storage remains OpenObserve.
-"""
+"""Thin SMTP alerter for Docker fault-injection drills (A1–A8). Storage = VM/VL."""
 from __future__ import annotations
 
 import os
@@ -13,13 +9,15 @@ import time
 import urllib.request
 from email.message import EmailMessage
 
-ALERT_TO = os.environ.get("ALERT_TO", "dev@dtcdev.click")
+ALERT_TO = os.environ.get(
+    "ALERT_TO", "dtcdev+5xx@mail.grokbot.com,dev@dtcdev.click"
+)
 SMTP_HOST = os.environ.get("SMTP_HOST", "mailpit")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))
 HTTP_URL = os.environ.get("HTTP_URL", "http://target-http/")
 PG_HOST = os.environ.get("PG_HOST", "target-pg")
 PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-OO_URL = os.environ.get("OO_HEALTH_URL", "http://openobserve:5080/healthz")
+STORE_URL = os.environ.get("OO_HEALTH_URL", os.environ.get("STORE_HEALTH_URL", "http://victoria-metrics:8428/health"))
 INTERVAL = float(os.environ.get("POLL_INTERVAL", "3"))
 STATE: dict[str, bool] = {}
 
@@ -50,9 +48,9 @@ def check_pg() -> bool:
         return False
 
 
-def check_oo() -> bool:
+def check_store() -> bool:
     try:
-        with urllib.request.urlopen(OO_URL, timeout=3) as r:
+        with urllib.request.urlopen(STORE_URL, timeout=3) as r:
             return 200 <= r.status < 500
     except Exception:
         return False
@@ -68,14 +66,13 @@ def edge(name: str, ok: bool) -> None:
 
 
 def main() -> None:
-    # prime without firing
     STATE["https"] = check_http()
     STATE["postgres"] = check_pg()
-    STATE["openobserve"] = check_oo()
+    STATE["store"] = check_store()
     while True:
         edge("https", check_http())
         edge("postgres", check_pg())
-        edge("openobserve", check_oo())
+        edge("store", check_store())
         time.sleep(INTERVAL)
 
 

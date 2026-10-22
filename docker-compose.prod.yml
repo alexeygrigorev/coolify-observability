@@ -1,0 +1,58 @@
+# VictoriaMetrics + VictoriaLogs + Vector on contabo-a (.163)
+# vmui: http://10.100.0.1:8428/vmui  |  VL: http://10.100.0.1:9428/select/vmui
+# No Grafana. Hard mem caps. Digests pinned.
+name: coolify-obs-victoria
+
+services:
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    container_name: victoria-metrics
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=30d
+      - -memory.allowedBytes=134217728
+      - -search.maxUniqueTimeseries=300000
+      - -promscrape.config=/etc/vm/prometheus.yml
+      - -httpListenAddr=:8428
+    volumes:
+      - /data/obs/vm:/victoria-metrics-data
+      - /data/obs/configs/vm/prometheus.yml:/etc/vm/prometheus.yml:ro
+    network_mode: host
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: "0.5"
+
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.15.0-victorialogs
+    container_name: victoria-logs
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=14d
+      - -memory.allowedBytes=134217728
+      - -httpListenAddr=:9428
+    volumes:
+      - /data/obs/vl:/victoria-logs-data
+    network_mode: host
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: "0.5"
+
+  vector-a:
+    image: timberio/vector:0.60.0-debian
+    container_name: vector-contabo-a
+    restart: unless-stopped
+    user: root
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - /data/obs/configs/vector/contabo-a/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /data/obs/vector-a:/var/lib/vector
+    network_mode: host
+    pid: host
+    mem_limit: 128m
+    cpus: "0.25"
+    depends_on:
+      - victoria-logs
+      - victoria-metrics

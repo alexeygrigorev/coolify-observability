@@ -1,0 +1,36 @@
+data_dir: /var/lib/vector
+
+sources:
+  docker_logs:
+    type: docker_logs
+    exclude_containers:
+      - vector-contabo-b
+
+transforms:
+  logs_remap:
+    type: remap
+    inputs: [docker_logs]
+    source: |
+      .host = "contabo-b"
+      .fleet = "contabo-coolify"
+      .timestamp = now()
+      if !exists(.message) {
+        .message = encode_json(.)
+      }
+
+sinks:
+  vl_logs:
+    type: http
+    inputs: [logs_remap]
+    uri: http://10.100.0.1:9428/insert/jsonline?_stream_fields=host,container_name&_msg_field=message&_time_field=timestamp
+    method: post
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    compression: gzip
+    batch:
+      max_bytes: 1048576
+      timeout_secs: 5
+    healthcheck:
+      enabled: false

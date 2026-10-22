@@ -1,81 +1,58 @@
 # coolify-observability
 
-Lightweight observability for **Coolify on Contabo** (DataTalksClub / dtcdev).
+Lightweight observability for **Coolify on Contabo**.
 
-## Recommended stack (plan + t1016u)
+## Stack (t1014 consensus)
 
-| Piece | Choice |
-|-------|--------|
-| **Primary** | **OpenObserve** (single binary/container on contabo-a `.163`) + **Vector** on `.163` and `.141` |
-| Metrics + logs store | OpenObserve Parquet (+ WAL); SQLite metadata only — not a homemade TSDB |
-| UI / alerts | OpenObserve UI + built-in alert destinations → **`dev@dtcdev.click`** |
-| Dead-man | `machine-management/monitors/coolify-healthcheck` (cron → same mailbox) |
-| **Fallback** if O2 RAM soak fails | **VictoriaMetrics + VictoriaLogs** (no Grafana) |
-| Hard mem (OpenObserve) | **512–1024 MiB** initially; raise only after soak evidence |
+| Piece | Where | Notes |
+|-------|-------|-------|
+| **VictoriaMetrics** | contabo-a `.163` `:8428` | Native `promscrape` + **/vmui** (no Grafana) |
+| **VictoriaLogs** | contabo-a `.163` `:9428` | **/select/vmui** |
+| **Vector** | `.163` + `.141` | Docker logs → VL; host_metrics → VM |
+| **Exporters** | `.141` | Keep node + postgres×2; drop promtail after Vector green |
+| **coolify-healthcheck** | machine-management | Dead-man complement |
 
-See [TASKS.md](TASKS.md) for Hub child intakes (ids + links).
+**Rejected for Contabo now:** OpenObserve (partial install torn down). Fallback remains documented only if VM/VL fails soak.
 
-## Design principles
+Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi.
 
-1. **Thin custom layer is OK** — collectors, alert rules, fault-injection drills. Do **not** reinvent a TSDB or log database.
-2. **Storage = proven product** — OpenObserve (primary) or VictoriaMetrics/VictoriaLogs (fallback). No custom metrics/log stores.
-3. **Docker alert fault-injection tests are mandatory** — every alert path must have a compose scenario that artificially causes the condition and asserts the alert fires (and recovers).
-4. **Alerts → `dev@dtcdev.click`** — email is the default notification channel for operators.
+## Alert destinations
 
-## Scope
+**Email wiring deferred** (steering). Destinations to wire later:
 
-| In scope | Out of scope |
-|----------|--------------|
-| Host / container / Postgres / HTTPS health | Recreating LGTM (Prometheus+Loki+Grafana+AM zoo) |
-| Alert rules + fault-injection CI | Writing a custom TSDB or log DB |
-| Thin collectors (Vector) / OpenObserve | Secrets in git |
-| Docs + test matrix A1–A8 | dataops-knowledge sprint dumps |
+1. `dtcdev+5xx@mail.grokbot.com` (preferred tagged)
+2. `dev@dtcdev.click`
+
+See `alerts/destinations.example.yaml`. CI drills already assert both recipients via Mailpit.
 
 ## Layout
 
 ```
-.
-├── README.md
-├── TASKS.md                # Hub child tasks with ids/links
-├── LICENSE                 # MIT
-├── docker-compose.yml      # OpenObserve + Vector ( Contabo-shaped; pin tags )
-├── docker-compose.test.yml # Alert drill stack (fault injection)
-├── vector/                 # Vector configs for .163 / .141
-├── alerts/                 # Alert rule stubs / OO alert definitions
-├── scripts/                # Drill helpers + soak RSS sampler
-├── tests/                  # pytest matrix for alert drills
-└── docs/                   # CI pending + enable notes
+docker-compose.prod.yml       # .163 VM+VL+Vector (project coolify-obs-victoria)
+docker-compose.exporters.yml  # .141 Vector
+docker-compose.test.yml       # CI drills
+configs/vm/prometheus.yml     # scrape targets
+configs/vector/contabo-{a,b}/
+alerts/                       # rules + deferred destinations
+scripts/drill_alerter.py      # thin custom layer under test
+tests/                        # A1–A8 fault-injection
 ```
 
-## Alert fault-injection matrix
-
-| ID | Condition | How we inject | Assert |
-|----|-----------|---------------|--------|
-| A1 | HTTPS endpoint down | Stop / blackhole target container | Alert fires within SLA; recovers when restored |
-| A2 | Disk pressure | Fill a bind-mounted volume past threshold | Alert fires; recovers after cleanup |
-| A3 | RAM / OOM pressure | Stress container or cgroup limit | Alert fires |
-| A4 | Postgres unreachable | Stop PG or reject network | Alert fires; recovers |
-| A5 | Coolify / app healthcheck fail | Force unhealthy healthcheck | Alert fires |
-| A6 | Scrape / metrics gap | Pause exporter | Stale/missing-series alert fires |
-| A7 | Log pipeline stall | Break shipper → OpenObserve | Pipeline-down alert fires |
-| A8 | Alert email path | Capture SMTP (Mailpit) | Message to `dev@dtcdev.click` recorded |
-
-## Local / CI test run
+## Local drills
 
 ```bash
-docker compose -f docker-compose.test.yml up -d --wait || true
+pip install -r tests/requirements.txt
+docker compose -f docker-compose.test.yml --profile full up -d
 python -m pytest tests/ -v
-docker compose -f docker-compose.test.yml down -v
+docker compose -f docker-compose.test.yml --profile full down -v
 ```
 
-CI definition is at `docs/ci.yml.workflow-pending` (promote to `.github/workflows/ci.yml` once a token with the `workflow` scope is available — see `docs/ENABLE_GITHUB_ACTIONS.md`).
+## Contabo paths
 
-## Related
-
-- Hub parent: https://hub.dtcdev.click/#/intake/a478bb62-ead3-4cce-a8cc-4a8897e7ca71
-- Inventory / monitors: [`alexeygrigorev/machine-management`](https://github.com/alexeygrigorev/machine-management)
-- Plan reports (operators): `~/tmp/agent-reports/obs-lightweight-plan-t1012u-*`
+- `/data/obs/docker-compose.yml` on `.163`
+- `/data/obs-exporters/docker-compose.yml` on `.141`
+- Do **not** start `/data/openobserve/**` (STOPPED)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT
