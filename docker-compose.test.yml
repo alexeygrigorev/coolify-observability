@@ -1,0 +1,74 @@
+# Alert fault-injection drill stack.
+# Storage stays "existing" products (stubs below). Custom thin layer under test
+# will cause faults and assert alerts. Do NOT point this at Contabo prod.
+#
+# Status: stub — peers (Astra/Argon/Opus) pick concrete images/versions.
+# Mailpit captures alert email destined for dev@dtcdev.click in CI.
+
+name: coolify-obs-alert-drills
+
+services:
+  # Metrics storage stub (swap for VictoriaMetrics when plan lands)
+  metrics:
+    image: prom/prometheus:v2.54.1
+    profiles: ["full"]
+    volumes:
+      - ./alerts:/etc/prometheus/rules:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+
+  # Log storage stub (swap for VictoriaLogs / Loki when plan lands)
+  logs:
+    image: grafana/loki:3.1.1
+    profiles: ["full"]
+    ports:
+      - "3100:3100"
+
+  # Alertmanager → email (Mailpit in tests)
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    profiles: ["full"]
+    ports:
+      - "9093:9093"
+
+  # SMTP capture for asserts that alerts reached dev@dtcdev.click
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # Fault targets used by tests/ (started per-scenario by pytest fixtures)
+  target-http:
+    image: nginx:1.27-alpine
+    profiles: ["targets"]
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  target-pg:
+    image: postgres:16-alpine
+    profiles: ["targets"]
+    environment:
+      POSTGRES_PASSWORD: drill
+      POSTGRES_USER: drill
+      POSTGRES_DB: drill
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drill"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  default:
+    name: coolify-obs-drills
