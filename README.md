@@ -18,12 +18,13 @@ Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi.
 
 ## Alert destinations
 
-**Email wiring deferred** (steering). Destinations to wire later:
+**Wired (t1028u)** via `coolify-healthcheck` → msmtp → SES (`noreply@datatalks.club`):
 
-1. `dtcdev+5xx@mail.grokbot.com` (preferred tagged)
-2. `dev@dtcdev.click`
+1. `dtcdev+5xx@mail.grokbot.com` (preferred tagged; ask Alexey later for final prod mailbox)
+2. `dev@dtcdev.click` (keep working path)
 
-See `alerts/destinations.example.yaml`. CI drills already assert both recipients via Mailpit.
+See `alerts/destinations.example.yaml`. CI drills still assert both recipients via Mailpit.
+Dead-man also probes VM/VL `/health` from both Contabo hosts.
 
 ## Layout
 

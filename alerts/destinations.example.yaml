@@ -1,8 +1,14 @@
-# Wire later (email address fix deferred per steering).
-# destinations:
-#   - email: dtcdev+5xx@mail.grokbot.com
-#   - email: dev@dtcdev.click
-# smtp_mode: ses
-# alert_from: noreply@datatalks.club
-destinations: []
-status: deferred
+# Alert email destinations (wired on Contabo via coolify-healthcheck + SES SMTP).
+# Preferred tagged inbox + keep working path. Ask Alexey later for final prod mailbox.
+destinations:
+  - email: dtcdev+5xx@mail.grokbot.com
+  - email: dev@dtcdev.click
+smtp_mode: ses
+smtp_secret: shared/ses-smtp-credentials   # AWS Secrets Manager (eu-west-1)
+alert_from: noreply@datatalks.club
+status: wired-via-coolify-healthcheck-t1028u
+notes: |
+  In-band vmalert/Alertmanager still optional. Dead-man path is
+  machine-management/monitors/coolify-healthcheck on both Contabo hosts
+  (cron */5 Europe/Berlin) → msmtp → SES → destinations above.
+  HTTP 5xx-style checks: courses/AISHL/website/relay/relay-dev + vm/vl /health.
