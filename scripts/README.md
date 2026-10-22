@@ -1,6 +1,3 @@
-# Drill helpers
+# Scripts
 
-Scripts that artificially cause alert conditions (stop container, fill disk,
-break scrape, etc.) and wait for recovery. Called from `tests/`.
-
-Nothing here talks to Contabo until operators explicitly approve install.
+- `soak-rss.sh` — run on contabo-a during 24–48h soak; fail OO if sustained > agreed ceiling → VictoriaMetrics+VictoriaLogs fallback.

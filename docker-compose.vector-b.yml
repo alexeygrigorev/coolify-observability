@@ -1,0 +1,21 @@
+# Vector on contabo-b (.141) → OpenObserve via WireGuard 10.100.0.1:5080
+name: coolify-obs-vector-b
+
+services:
+  vector-b:
+    image: timberio/vector:0.60.0-debian
+    container_name: vector-contabo-b
+    restart: unless-stopped
+    user: root
+    command: ["--config", "/etc/vector/vector.yaml"]
+    env_file:
+      - .env
+    environment:
+      OPENOBSERVE_URL: http://10.100.0.1:5080
+    volumes:
+      - ./vector/contabo-b/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /data/openobserve-vector-b:/var/lib/vector
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 256m

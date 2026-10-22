@@ -1,0 +1,83 @@
+# Vector on contabo-a (.163) — Coolify apps host
+# Sinks → OpenObserve on localhost / compose network
+
+data_dir: /var/lib/vector
+
+sources:
+  docker_logs:
+    type: docker_logs
+    exclude_containers:
+      - vector-contabo-a
+      - openobserve
+
+  host_metrics:
+    type: host_metrics
+    scrape_interval_secs: 60
+    filesystem:
+      mountpoints:
+        excludes: ["*/proc/sys/fs/binfmt_misc"]
+    collectors: [cpu, memory, disk, filesystem, load, network]
+
+  # Keep scraping local exporters if present (node/cadvisor); optional
+  prom_scrape_local:
+    type: prometheus_scrape
+    endpoints:
+      - http://host.docker.internal:9100/metrics
+      - http://host.docker.internal:9101/metrics
+    scrape_interval_secs: 60
+    instance_tag: instance
+
+transforms:
+  logs_remap:
+    type: remap
+    inputs: [docker_logs]
+    source: |
+      .host = "contabo-a"
+      .fleet = "contabo-coolify"
+
+sinks:
+  oo_logs:
+    type: http
+    inputs: [logs_remap]
+    uri: "${OPENOBSERVE_URL}/api/default/coolify_logs/_json"
+    method: post
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    encoding:
+      codec: json
+    compression: gzip
+    batch:
+      max_bytes: 1048576
+      timeout_secs: 5
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+
+  oo_metrics_host:
+    type: prometheus_remote_write
+    inputs: [host_metrics]
+    endpoint: "${OPENOBSERVE_URL}/api/default/prometheus/api/v1/write"
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    healthcheck:
+      enabled: false
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+
+  oo_metrics_prom:
+    type: prometheus_remote_write
+    inputs: [prom_scrape_local]
+    endpoint: "${OPENOBSERVE_URL}/api/default/prometheus/api/v1/write"
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    healthcheck:
+      enabled: false

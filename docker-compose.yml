@@ -1,0 +1,49 @@
+# OpenObserve on contabo-a (.163). Pin tags; no :latest.
+# Hard mem 1024 MiB (floor planning 512–1024). Secrets via host .env only.
+name: coolify-obs
+
+services:
+  openobserve:
+    image: openobserve/openobserve:v1.1.2
+    container_name: openobserve
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_COMPACT_DATA_RETENTION_DAYS: ${ZO_COMPACT_DATA_RETENTION_DAYS:-30}
+      ZO_TELEMETRY: "false"
+    volumes:
+      - /data/openobserve/data:/data
+    ports:
+      - "127.0.0.1:5080:5080"
+      - "10.100.0.1:5080:5080"
+    mem_limit: 1024m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+
+  vector-a:
+    image: timberio/vector:0.60.0-debian
+    container_name: vector-contabo-a
+    restart: unless-stopped
+    user: root
+    command: ["--config", "/etc/vector/vector.yaml"]
+    env_file:
+      - .env
+    environment:
+      OPENOBSERVE_URL: http://10.100.0.1:5080
+    volumes:
+      - ./vector/contabo-a/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /data/openobserve/vector-a:/var/lib/vector
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      openobserve:
+        condition: service_healthy
+    mem_limit: 256m

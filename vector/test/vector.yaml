@@ -1,0 +1,23 @@
+data_dir: /var/lib/vector
+sources:
+  docker_logs:
+    type: docker_logs
+transforms:
+  remap:
+    type: remap
+    inputs: [docker_logs]
+    source: '.drill = true'
+sinks:
+  oo_logs:
+    type: http
+    inputs: [remap]
+    uri: "${OPENOBSERVE_URL}/api/default/drill_logs/_json"
+    method: post
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    encoding:
+      codec: json
+    healthcheck:
+      enabled: false

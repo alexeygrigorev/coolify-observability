@@ -1,0 +1,79 @@
+# Vector on contabo-b (.141) — Postgres host
+# Point OPENOBSERVE_URL at http://10.100.0.1:5080 (WG) or http://169.58.119.163:5080 (firewalled)
+
+data_dir: /var/lib/vector
+
+sources:
+  docker_logs:
+    type: docker_logs
+    exclude_containers:
+      - vector-contabo-b
+
+  host_metrics:
+    type: host_metrics
+    scrape_interval_secs: 60
+    collectors: [cpu, memory, disk, filesystem, load, network]
+
+  prom_scrape:
+    type: prometheus_scrape
+    endpoints:
+      - http://10.100.0.2:9100/metrics   # node_exporter
+      - http://10.100.0.2:9101/metrics   # cadvisor (until dropped)
+      - http://10.100.0.2:9187/metrics   # postgres-exporter relay
+      - http://10.100.0.2:9188/metrics   # postgres-exporter shared
+    scrape_interval_secs: 60
+
+transforms:
+  logs_remap:
+    type: remap
+    inputs: [docker_logs]
+    source: |
+      .host = "contabo-b"
+      .fleet = "contabo-coolify"
+
+sinks:
+  oo_logs:
+    type: http
+    inputs: [logs_remap]
+    uri: "${OPENOBSERVE_URL}/api/default/coolify_logs/_json"
+    method: post
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    encoding:
+      codec: json
+    compression: gzip
+    batch:
+      max_bytes: 1048576
+      timeout_secs: 5
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+
+  oo_metrics_host:
+    type: prometheus_remote_write
+    inputs: [host_metrics]
+    endpoint: "${OPENOBSERVE_URL}/api/default/prometheus/api/v1/write"
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    healthcheck:
+      enabled: false
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+
+  oo_metrics_prom:
+    type: prometheus_remote_write
+    inputs: [prom_scrape]
+    endpoint: "${OPENOBSERVE_URL}/api/default/prometheus/api/v1/write"
+    auth:
+      strategy: basic
+      user: "${OPENOBSERVE_USER}"
+      password: "${OPENOBSERVE_PASSWORD}"
+    healthcheck:
+      enabled: false
