@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+
       - name: Run biz-metrics plumbing tests (no docker, no secrets)
         run: python -m pytest biz-metrics/tests/ -v --tb=short
 
