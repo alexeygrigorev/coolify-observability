@@ -33,6 +33,7 @@ Dead-man also probes VM/VL `/health` from both Contabo hosts.
 ```
 docker-compose.prod.yml       # .163 VM+VL+Vector (project coolify-obs-victoria)
 docker-compose.exporters.yml  # .141 Vector
+docker-compose.postgres.yml   # .141 Postgres exporters (lgtm-pgexp)
 docker-compose.test.yml       # CI drills
 configs/vm/prometheus.yml     # scrape targets
 configs/vector/contabo-{a,b}/
@@ -55,6 +56,8 @@ docker compose -f docker-compose.test.yml --profile full down -v
 
 - `/data/obs/docker-compose.yml` on `.163`
 - `/data/obs-exporters/docker-compose.yml` on `.141`
+- `/data/lgtm/exporters/docker-compose.postgres.yml` on `.141`; see
+  [Relay exporter routing and verification](docs/postgres-exporter-relay.md)
 - Do **not** start `/data/openobserve/**` (STOPPED)
 
 ## Retention + S3 (t1031u)
