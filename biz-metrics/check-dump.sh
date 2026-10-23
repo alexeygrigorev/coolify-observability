@@ -11,7 +11,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 DBS="$(grep -E '^[[:space:]]*PG_SHARED_DBS=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '\042\047')"
-if [[ "$DBS" == *"biz_metrics"* ]]; then
+if [[ " $DBS " =~ [[:space:]]biz_metrics[[:space:]] ]]; then
   echo "OK: PG_SHARED_DBS lists biz_metrics"
 else
   echo "MISSING: add biz_metrics to PG_SHARED_DBS in $ENV_FILE"

@@ -146,6 +146,10 @@ VM_SERIES = {
     "cmp_course_registrations_website": "cmp_course_registrations",
 }
 
+DELETE_DAY_SQL = """DELETE FROM metric_daily
+WHERE day = %(day)s AND project = %(project)s AND metric = %(metric)s
+  AND (%(platform)s = '' OR dims->>'platform' = %(platform)s)"""
+
 UPSERT_SQL = """INSERT INTO metric_daily (day, project, metric, dims, value, computed_at)
 VALUES (%(day)s, %(project)s, %(metric)s, %(dims)s::jsonb, %(value)s, now())
 ON CONFLICT (day, project, metric, dims)
@@ -205,17 +209,20 @@ def render_sample(
 
 def build_payload(rows: list[dict]) -> str:
     """rows: [{series, dims, value, day}]. One line per row, sorted for goldens."""
+    # Weekly queries can return the same Monday sample for several days.
+    unique = {(r["series"], json.dumps(r["dims"], sort_keys=True), r["day"]): r
+              for r in rows}
     return "\n".join(
         render_sample(r["series"], r["dims"], r["value"], r["day"])
         for r in sorted(
-            rows,
+            unique.values(),
             key=lambda r: (
                 str(r["day"]),
                 r["series"],
                 json.dumps(r["dims"], sort_keys=True),
             ),
         )
-    ) + "\n"
+    ) + ("\n" if unique else "")
 
 
 def push_vm(url: str, payload: str, timeout: int = 30) -> tuple[int, str]:
@@ -239,6 +246,14 @@ def run_source(
         with source_conn.cursor() as cur:
             cur.execute(sql, {"start": start, "end": end})
             fetched = cur.fetchall()
+        # Replace this source's daily slice in the same store transaction.
+        # A resubmit or status change can remove a dimension entirely.
+        if not dry_run:
+            with store_conn.cursor() as cur:
+                cur.execute(DELETE_DAY_SQL, {
+                    "day": day, "project": project,
+                    "metric": series, "platform": platform,
+                })
         for row_day, dims, value in fetched:
             if isinstance(dims, str):
                 dims = json.loads(dims)
@@ -246,7 +261,7 @@ def run_source(
                 continue  # NULL rate (zero-send window): nothing to store/push
             dims = dict(dims)
             if platform:
-                dims = {"platform": platform, **dims}
+                dims = {**dims, "platform": platform}
             if not dry_run:
                 with store_conn.cursor() as cur:
                     cur.execute(
@@ -292,6 +307,14 @@ def write_textfile(rows: list[dict], textfile_dir: str) -> str:
     out = os.path.join(textfile_dir, "biz_metrics.prom")
     tmp = out + ".tmp"
     names = sorted({f"biz_{r['series']}" for r in rows})
+    # Textfile scraping has no historic timestamps: retain only the latest
+    # day for each series/label set, avoiding duplicate Prometheus samples.
+    latest = {}
+    for row in rows:
+        key = (row["series"], json.dumps(row["dims"], sort_keys=True))
+        if key not in latest or row["day"] > latest[key]["day"]:
+            latest[key] = row
+    rows = list(latest.values())
     with open(tmp, "w", encoding="utf-8") as fh:
         for name in names:
             fh.write(f"# HELP {name} business daily aggregate (collect-only)\n")
@@ -330,6 +353,17 @@ def resolve_days(args: argparse.Namespace) -> list[dt.date]:
     return window_days(args.window)
 
 
+def connect_database(psycopg, env_name: str):
+    # The root wrapper resolves Coolify container addresses each run. No DB
+    # port is published and container restarts cannot leave stale IPs here.
+    host_key = ("BIZ_METRICS_RELAY_HOSTADDR" if env_name == "BIZ_METRICS_RELAY_DSN"
+                else "BIZ_METRICS_SHARED_HOSTADDR")
+    options = {"connect_timeout": 15, "options": "-c timezone=UTC -c statement_timeout=120000"}
+    if os.environ.get(host_key):
+        options["hostaddr"] = os.environ[host_key]
+    return psycopg.connect(os.environ[env_name], **options)
+
+
 def main(argv: list[str] | None = None) -> int:
     import psycopg  # runtime dep on contabo-b; tests stub pure functions
 
@@ -344,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
 
     all_rows: list[dict] = []
     store_conn = (
-        psycopg.connect(store_dsn) if not args.dry_run else None
+        connect_database(psycopg, "BIZ_METRICS_STORE_DSN") if not args.dry_run else None
     )
     try:
         for metric in args.metrics:
@@ -353,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             if not source_dsn:
                 print(f"skip {metric}: {dsn_env} not set", file=sys.stderr)
                 continue
-            with psycopg.connect(source_dsn) as source_conn:
+            with connect_database(psycopg, dsn_env) as source_conn:
                 rows = run_source(
                     source_conn, store_conn, metric, days, args.dry_run
                 )
@@ -374,10 +408,16 @@ def main(argv: list[str] | None = None) -> int:
     if not vm_url:
         print("VM_PUSH_URL is required for --push", file=sys.stderr)
         return 2
-    status, body = push_vm(vm_url, payload)
-    print(f"pushed {len(all_rows)} samples -> {status} {body[:200]}")
+    status, _body = push_vm(vm_url, payload)
+    print(f"pushed {len(payload.splitlines())} samples; HTTP {status}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        # Driver/HTTP errors can include DSNs, credentials or endpoint URLs.
+        print(f"rollup failed ({type(exc).__name__}); check private configuration",
+              file=sys.stderr)
+        raise SystemExit(1) from None

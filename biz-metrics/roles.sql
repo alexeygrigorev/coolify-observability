@@ -25,12 +25,12 @@
 -- 4) On the biz_metrics DB (connected to biz_metrics):
 --      GRANT CONNECT ON DATABASE biz_metrics TO biz_rw;
 --      GRANT USAGE ON SCHEMA public TO biz_ro, biz_rw;
---      GRANT SELECT, INSERT, UPDATE ON metric_daily TO biz_rw;
+--      GRANT SELECT, INSERT, UPDATE, DELETE ON metric_daily TO biz_rw;
 --      GRANT SELECT ON metric_daily TO biz_ro;
 --    The runner writes ONLY via biz_rw on biz_metrics, and reads app DBs ONLY
 --    via biz_ro. No DDL at runtime; schema changes are operator-applied.
 
 -- Idempotent grants for the biz_metrics DB itself (safe to re-run):
 GRANT USAGE ON SCHEMA public TO biz_ro, biz_rw;
-GRANT SELECT, INSERT, UPDATE ON metric_daily TO biz_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON metric_daily TO biz_rw;
 GRANT SELECT ON metric_daily TO biz_ro;

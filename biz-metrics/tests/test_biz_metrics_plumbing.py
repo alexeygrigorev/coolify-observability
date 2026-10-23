@@ -128,15 +128,15 @@ def test_run_source_upserts_per_key_and_returns_vm_rows():
         "day": dt.date(2026, 10, 20),
     }]
     writes = [e for c in store.cursors for e in c.executed]
-    assert len(writes) == 1
-    sql, params = writes[0]
+    assert len(writes) == 2
+    sql, params = writes[1]
     assert "ON CONFLICT" in sql
     assert params["project"] == "cmp"
     assert json.loads(params["dims"])["platform"] == "cmp"
     # re-run is idempotent: same key shape, no duplicate statements per row
     store2 = _FakeConn()
     rollup.run_source(source, store2, metric, [dt.date(2026, 10, 20)], dry_run=False)
-    assert len([e for c in store2.cursors for e in c.executed]) == 1
+    assert len([e for c in store2.cursors for e in c.executed]) == 2
 
 
 def test_registry_envs_all_documented():

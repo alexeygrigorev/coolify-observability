@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS metric_daily_project_metric_day_idx
 --   GRANT SELECT (id, client_id, campaign_id, transactional_message_id,
 --     event_type, created_at) ON email_events TO biz_ro;
 --   GRANT SELECT (id, slug) ON clients TO biz_ro;
---   GRANT SELECT, INSERT, UPDATE ON metric_daily TO biz_rw;
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON metric_daily TO biz_rw;
 --   GRANT SELECT ON metric_daily TO biz_ro;
 --   (full per-DB list in roles.sql)
 --   -- pg-shared / DB aisl (P0 AISHL intake 8cc61eb4):

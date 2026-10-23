@@ -27,8 +27,9 @@ biz-metrics/
   cron/biz-metrics.env.example
   sql/relay/                 Relay P0 metrics (tx/campaign/bounce/complaint)
   sql/aishl/                 AISHL P0 metrics (lesson/signup/paid+MRR, t1127u-D)
-  cron/run.sh                cron wrapper (sources /data/biz-metrics/env)
-  install-biz-metrics.sh     operator installer (copies files, cron, env stub)
+  cron/run.sh                cron wrapper (sources /etc/biz-metrics.env)
+  install-biz-metrics.sh     operator installer (venv, cron, private env stub)
+  provision-biz-metrics.py   node-only DB/role provisioning; credentials stay in /etc
   check-dump.sh              verifies pg-shared dump list includes biz_metrics
   tests/test_biz_metrics_cmp.py       CMP P0 tests (live PG fixtures optional)
   tests/test_biz_metrics_relay.py     Relay P0 tests (live PG fixtures optional)
@@ -195,38 +196,78 @@ psql "$BIZ_METRICS_STORE_DSN" -c "SELECT dims, value FROM metric_daily
   WHERE day='2026-10-20' AND project='aishl' AND metric='aishl_lesson_opens';"
 ```
 
-## Deploy checklist (operator, contabo-b)
+## Deploy (operator, contabo-b)
 
-1. `CREATE DATABASE biz_metrics` on pg-shared; apply `schema.sql`;
-   `CREATE ROLE biz_ro` (+ `SELECT` on listed tables in `cmp`, `website`,
-   `aisl`, and on pg-relay / DB `relay`), `biz_rw` (write on `biz_metrics` only). Full
-   grants in `roles.sql`. Credentials live in the existing secrets path on
-   contabo-b, never in this repo.
-2. Add `biz_metrics` to the pg-shared nightly dump list
-   (`PG_SHARED_DBS="cmp aisl website biz_metrics"` in
-   `/etc/coolify-pg-dump.env`); verify with `./biz-metrics/check-dump.sh`.
-3. Install: `./biz-metrics/install-biz-metrics.sh contabo-b`
-   (copies `runner/`+`sql/` to `/data/biz-metrics`, wrapper to
-   `/data/biz-metrics/run.sh`, cron fragment, env stub); fill
-   `/data/biz-metrics/env` (mode 600); run backfill from earliest rows;
-   confirm `metric_daily` rows, vmui yesterday values, and one hand-SQL match.
-4. Confirm VM import is reachable over WG from contabo-b and whether
-   `-dedup.minScrapeInterval` is set (re-pushing D-1..D-7 otherwise
-   duplicates samples).
+From an operator checkout, install the runner and then provision on the node:
+
+```bash
+# One-time prerequisite on contabo-b: sudo apt-get install python3-venv
+./biz-metrics/install-biz-metrics.sh contabo-b
+ssh contabo-b sudo python3 /data/biz-metrics/provision-biz-metrics.py
+ssh contabo-b sudo /data/biz-metrics/run.sh
+ssh contabo-b sudo bash /data/biz-metrics/check-dump.sh
+```
+
+The installer creates an isolated Python venv, root cron, and log rotation.
+It preserves `/etc/biz-metrics.env` (root:root 0600), in the same private
+configuration directory used by the existing dump job. Provisioning reads
+container names from `/etc/coolify-pg-dump.env`, creates `biz_metrics` on
+pg-shared, applies schema/grants, generates dedicated credentials on the
+node, and adds `biz_metrics` to the existing dump list. Credentials never
+pass through the operator box. Re-running preserves credentials; an
+existing role without saved credentials requires private reconciliation.
+
+Root cron is needed to read the root-only configuration and inspect Docker
+network addresses. DB queries use only `biz_ro` column-level SELECT grants
+and `biz_rw` SELECT/INSERT/UPDATE/DELETE on `metric_daily`. DELETE is scoped
+to the current metric/day/platform within the same transaction as upserts,
+so late status changes and resubmits remove stale dimension rows. Container
+IPs are resolved on every run; no PostgreSQL port is published. Source
+sessions use UTC, read-only defaults, and a two-minute statement timeout.
+
+Debian/Ubuntu cron schedules in the **system timezone**. `TZ=` sets the job
+environment; it does not change daemon scheduling. The installer requires
+`Europe/Berlin` on the host and verifies the cron service is active. The
+nightly entry is 01:30 local time. The data grain and D-1..D-7 window use UTC
+calendar days (at 01:30 during summer time, the current UTC date still
+belongs to the previous local day). Weekly AISHL rows use their ISO Monday,
+which can precede the daily window.
+
+With a remapped operator home, set `BIZ_METRICS_SSH_CONFIG` and
+`BIZ_METRICS_SSH_IDENTITY` to the existing SSH configuration and key paths.
+No credentials belong in command arguments, repository files, or reports.
+
+VictoriaMetrics stores only two days locally in the current deployment;
+PostgreSQL retains the durable recomputed history. VM reimports may retain
+multiple raw samples with the same timestamp; no global deduplication or
+retention settings are changed by this deployment. Use PostgreSQL for
+canonical recomputed values and VMUI for the recent collect-only view.
+To view yesterday, select yesterday's **UTC time range** in VMUI and query
+`{__name__=~"biz_.*"}`. These historical samples need a historical range;
+they are not current-time gauges. For an instant query, use yesterday at
+00:01 UTC (the sample is at 00:00 UTC); the default short lookback will not
+show it later in the day. `/api/v1/export` gives raw timestamp proof.
+
+Disable scheduling by removing `/etc/cron.d/biz-metrics`; retain the DB and
+private environment. Reinstalling restores the schedule. No alert changes
+are part of this job.
 
 ## Textfile fallback
 
 If `POST /api/v1/import/prometheus` is rejected from contabo-b, run with
-`--textfile-dir <node_exporter textfile dir>`; the runner writes
+`--no-push --textfile-dir <node_exporter textfile dir>`; the runner writes
 `biz_metrics.prom` (gauges, no timestamps — textfile format has none).
-Confirm the `:9100` collector runs with `--collector.textfile.directory` set
+Only the latest day per metric/label set is emitted, so a seven-day run does
+not produce duplicate samples with the same label set. This fallback shows
+latest observed daily aggregates at scrape time; use PostgreSQL for the
+original historical day. Confirm the `:9100` collector runs with `--collector.textfile.directory` set
 (already scraped per `configs/vm/prometheus.yml`); yesterday series then appear
 via the normal `node` scrape job instead of the import endpoint.
 
 ## Tests
 
 ```bash
-python3 -m pytest biz-metrics/tests/ -v          # plumbing (no DB, no docker)
+python3 -m pytest biz-metrics/tests/ -v          # pure tests; live fixtures skip without DSN
 BIZMETRICS_TEST_DSN=... python3 -m pytest biz-metrics/tests/test_biz_metrics_cmp.py -v  # + live PG
 python3 -m pytest biz-metrics/tests/test_biz_metrics_aishl.py -v  # AISHL: auto-starts own PG:16 container (needs docker)
 ```

@@ -1,12 +1,7 @@
-# biz-metrics nightly rollup — contabo-b, 01:30 Europe/Berlin.
-# Recomputes D-1..D-7 (late submits/resubmit edits settle within days).
-# TZ= pins wall-clock regardless of host timezone. Runs BEFORE the 02:30
-# pg_dump so the fresh rows are included in the same night's backup.
-# Install (idempotent) with: sudo ./biz-metrics/install-biz-metrics.sh contabo-b
-#
-# Optional hourly "today so far" illuminator for vmui (partial UTC day;
-# durable history still comes from the nightly run). Uncomment to enable.
-
+# Nightly collect-only rollup on contabo-b, whose system timezone MUST be
+# Europe/Berlin. Debian cron schedules using the daemon's system timezone;
+# TZ below sets the job environment only. Installer verifies the host zone.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 TZ=Europe/Berlin
-30 1 * * *  biz-metrics  /data/biz-metrics/run.sh >> /var/log/biz-metrics.log 2>&1
-# 5 * * * *  biz-metrics  /data/biz-metrics/run.sh --today-so-far >> /var/log/biz-metrics.log 2>&1
+30 1 * * * root /data/biz-metrics/run.sh >> /var/log/biz-metrics.log 2>&1

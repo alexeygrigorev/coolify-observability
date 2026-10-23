@@ -164,7 +164,7 @@ def test_run_source_skips_platform_for_aishl_and_upserts():
     assert vm_rows[0] == {"series": "aishl_signups",
                           "dims": {"utm_source": "telegram"},
                           "value": 2, "day": day}
-    upsert_sql, params = store.cur.executed[0]
+    upsert_sql, params = store.cur.executed[-1]
     assert "ON CONFLICT (day, project, metric, dims)" in upsert_sql
     assert params["project"] == "aishl"
     assert params["metric"] == "aishl_signups"

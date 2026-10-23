@@ -203,8 +203,8 @@ def test_run_source_upserts_relay_rows_without_platform():
     source, store = _FakeConn(fetched), _FakeConn([])
     rows = rollup.run_source(source, store, "relay_tx_messages",
                              [day], dry_run=False)
-    assert len(store.cur.executed) == 1
-    params = store.cur.executed[0][1]
+    assert len(store.cur.executed) == 2
+    params = store.cur.executed[-1][1]
     assert params["project"] == "relay"
     assert params["metric"] == "relay_tx_messages"
     assert json.loads(params["dims"]) == {"client": "cmp", "status": "sent",
@@ -220,7 +220,8 @@ def test_run_source_skips_null_rate_rows():
     rows = rollup.run_source(source, store, "relay_bounce_rate",
                              [day], dry_run=False)
     assert rows == []
-    assert store.cur.executed == []
+    assert len(store.cur.executed) == 1
+    assert "DELETE FROM metric_daily" in store.cur.executed[0][0]
 
 
 def test_relay_payload_has_biz_prefix_and_day_start_ts():
