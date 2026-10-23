@@ -71,7 +71,7 @@ def test_A8_alert_email_only_dev_recipient(alert_emails):
     with urllib.request.urlopen(f"{MAILPIT}/api/v1/messages", timeout=5) as r:
         data = json.load(r)
     blob = json.dumps(data)
-    assert alert_emails == ["dev@dtcdev.click"]
+    assert alert_emails == ["alexey@datatalks.club", "dev@dtcdev.click"]
     for addr in alert_emails:
         assert addr in blob, f"missing recipient {addr} in {blob[:500]}"
     assert "mail.grokbot.com" not in blob, f"grokbot recipient must be absent: {blob[:500]}"

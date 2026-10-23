@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = str(ROOT / "docker-compose.test.yml")
 MAILPIT = os.environ.get("MAILPIT_URL", "http://127.0.0.1:8025")
-ALERT_EMAILS = ["dev@dtcdev.click"]
+ALERT_EMAILS = ["alexey@datatalks.club", "dev@dtcdev.click"]
 ALERT_EMAIL = ALERT_EMAILS[0]
 
 

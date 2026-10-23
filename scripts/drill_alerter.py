@@ -10,7 +10,7 @@ import urllib.request
 from email.message import EmailMessage
 
 ALERT_TO = os.environ.get(
-    "ALERT_TO", "dev@dtcdev.click"
+    "ALERT_TO", "alexey@datatalks.club,dev@dtcdev.click"
 )
 SMTP_HOST = os.environ.get("SMTP_HOST", "mailpit")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))

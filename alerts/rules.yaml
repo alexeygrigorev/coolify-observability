@@ -1,5 +1,5 @@
 # Declarative alert rules for obs-alertd / vmalert.
-# Email destinations: ONLY dev@dtcdev.click (t1029u).
+# Email destinations: alexey@datatalks.club + dev@dtcdev.click (t1205u).
 rules:
   - id: A1_https_down
     type: http

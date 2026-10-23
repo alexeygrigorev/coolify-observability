@@ -20,9 +20,10 @@ Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi.
 
 **Wired (t1029u)** via `coolify-healthcheck` → msmtp → SES (`noreply@datatalks.club`):
 
-1. `dev@dtcdev.click` — **only** prod alert recipient
+1. `alexey@datatalks.club` — Alexey (prod)
+2. `dev@dtcdev.click` — shared ops inbox
 
-`dtcdev+5xx@mail.grokbot.com` removed from Contabo prod alert lists and repo defaults.
+`dtcdev+5xx@mail.grokbot.com` stays off Contabo prod alert lists unless needed for bot wake.
 
 See `alerts/destinations.example.yaml`. CI drill A8 asserts the single recipient via Mailpit.
 Dead-man also probes VM/VL `/health` from both Contabo hosts.

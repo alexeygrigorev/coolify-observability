@@ -1,4 +1,4 @@
-# Alerts → destinée (`dev@dtcdev.click`)
+# Alerts → `alexey@datatalks.club` + `dev@dtcdev.click`
 
 OpenObserve scheduled alerts (preferred) for:
 
@@ -15,4 +15,4 @@ Out-of-band dead-man: `machine-management/monitors/coolify-healthcheck` (add `/h
 
 ## DR weekly raise (t1119u)
 
-Dead-man for `dr_fast_pg_raise_last_success_unixtime` (>8d or absent) → email **only** `dev@dtcdev.click` via `machine-management/monitors/dr-raise-stale-check.sh` on contabo-a. See `A9_dr_fast_pg_raise_stale` in rules.yaml.
+Dead-man for `dr_fast_pg_raise_last_success_unixtime` (>8d or absent) → email `alexey@datatalks.club` + `dev@dtcdev.click` via `machine-management/monitors/dr-raise-stale-check.sh` on contabo-a. See `A9_dr_fast_pg_raise_stale` in rules.yaml.
