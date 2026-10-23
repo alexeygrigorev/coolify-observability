@@ -25,6 +25,10 @@ jobs:
         run: python -m pytest biz-metrics/tests/ -v --tb=short
 
   docker-alert-drills:
+    env:
+      COMPOSE_PROJECT_NAME: obs-drills-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      DRILL_CERT_DIR: /tmp/obs-drill-certs-${{ github.run_id }}-${{ github.run_attempt }}
+      GOMAXPROCS: "2"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,25 +42,13 @@ jobs:
       - name: Install test deps
         run: pip install -r tests/requirements.txt
 
-      - name: Bring up Mailpit (SMTP capture for alert asserts)
-        run: docker compose -f docker-compose.test.yml up -d mailpit
-
-      - name: Wait for Mailpit
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8025/api/v1/info >/dev/null; then
-              echo "mailpit ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "mailpit did not become ready" >&2
-          docker compose -f docker-compose.test.yml ps
-          exit 1
-
       - name: Run alert drill tests
         run: python -m pytest tests/ -v --tb=short
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.test.yml --profile full down -v
+        run: |
+          docker compose -f docker-compose.test.yml --profile full down -v --remove-orphans
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=$COMPOSE_PROJECT_NAME)"
+          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=$COMPOSE_PROJECT_NAME)"
+          test -z "$(docker network ls -q --filter label=com.docker.compose.project=$COMPOSE_PROJECT_NAME)"

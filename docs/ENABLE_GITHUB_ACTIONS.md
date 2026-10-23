@@ -1,18 +1,8 @@
-# Enable GitHub Actions CI
+# GitHub Actions CI is enabled
 
-The box `gh` OAuth app token has scopes `gist`, `read:org`, `repo` but **not** `workflow`.
-GitHub refuses any push that creates or updates paths under `.github/workflows/`.
+The active workflow is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+It runs pytest business-metrics checks and the full Docker A1–A8 matrix on main.
+The old workflow-scope blocker is resolved; no activation step is needed.
 
-CI definition is ready at [`ci.yml.workflow-pending`](ci.yml.workflow-pending).
-
-## Activate (operator)
-
-```bash
-gh auth refresh -h github.com -s workflow
-# or use a PAT with the workflow scope
-mkdir -p .github/workflows
-cp docs/ci.yml.workflow-pending .github/workflows/ci.yml
-git add .github/workflows/ci.yml
-git commit -m "ci: enable docker alert-drill workflow"
-git push
-```
+`ci.yml.workflow-pending` is a historical scaffold. Do not copy it over the active
+workflow: it predates the isolated Compose lifecycle and generated TLS fixtures.

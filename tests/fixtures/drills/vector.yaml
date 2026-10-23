@@ -1,0 +1,26 @@
+data_dir: /var/lib/vector
+sources:
+  events:
+    type: file
+    include: [/logs/events.log]
+    read_from: beginning
+    fingerprint:
+      strategy: device_and_inode
+    multiline:
+      start_pattern: '^(INFO|ERROR|PANIC) '
+      condition_pattern: '^(INFO|ERROR|PANIC) '
+      mode: halt_before
+      timeout_ms: 500
+sinks:
+  logs:
+    type: http
+    inputs: [events]
+    uri: http://victoria-logs:9428/insert/jsonline?_msg_field=message&_time_field=timestamp
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    batch:
+      timeout_secs: 1
+    healthcheck:
+      enabled: false

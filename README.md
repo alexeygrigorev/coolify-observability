@@ -47,15 +47,14 @@ tests/                        # A1–A8 fault-injection
 
 Docker alert fault-injection is mandatory for the thin custom alert layer.
 Storage stays in existing VictoriaMetrics/VictoriaLogs; this repo does not build
-a storage engine. See [the A1–A8 matrix](tests/README.md) for implemented drills
-and explicit placeholders. A green scaffold CI run includes placeholders and
-does not establish complete production alert coverage.
+a storage engine. See [the A1–A8 matrix](tests/README.md) for bounded drills,
+near-misses, FIRE/CLEAR SMTP capture, cleanup and the older-plan ID mapping.
+All eight scenarios execute; no expected failures are accepted. Pytest owns the
+isolated Compose lifecycle, generated TLS fixtures and ephemeral Mailpit port.
 
 ```bash
-pip install -r tests/requirements.txt
-docker compose -f docker-compose.test.yml --profile full up -d
-python -m pytest tests/ -v
-docker compose -f docker-compose.test.yml --profile full down -v
+python -m pip install -r tests/requirements.txt
+python -m pytest tests/ -v --tb=short
 ```
 
 ## Contabo paths

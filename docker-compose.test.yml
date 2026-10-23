@@ -4,7 +4,10 @@ name: coolify-obs-drills
 services:
   mailpit:
     image: axllent/mailpit:v1.21
-    ports: ["127.0.0.1:8025:8025"]
+    ports: ["127.0.0.1::8025"]
+    networks: [default, observer]
+    mem_limit: 64m
+    pids_limit: 32
 
   victoria-metrics:
     image: victoriametrics/victoria-metrics:v1.115.0
@@ -17,6 +20,9 @@ services:
     volumes:
       - ./configs/vm/prometheus.test.yml:/etc/vm/prometheus.yml:ro
     mem_limit: 128m
+    environment:
+      GOMAXPROCS: "2"
+    networks: [default, observer]
 
   victoria-logs:
     image: victoriametrics/victoria-logs:v1.15.0-victorialogs
@@ -26,50 +32,124 @@ services:
       - -memory.allowedBytes=67108864
       - -httpListenAddr=:9428
     mem_limit: 128m
+    environment:
+      GOMAXPROCS: "2"
 
   target-http:
-    image: nginx:1.27-alpine
-    profiles: ["targets", "full"]
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 3s
-      timeout: 2s
-      retries: 5
+    image: python:3.12-slim
+    profiles: [full]
+    command: [python, -u, /fixture/https.py]
+    volumes:
+      - ./tests/fixtures/drills:/fixture:ro
+      - ${DRILL_CERT_DIR:?pytest generates test certificates}:/certs:ro
+    mem_limit: 48m
+    pids_limit: 32
 
   target-pg:
     image: postgres:16-alpine
-    profiles: ["targets", "full"]
+    profiles: [full]
     environment:
       POSTGRES_PASSWORD: drill
       POSTGRES_USER: drill
       POSTGRES_DB: drill
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U drill"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
+      test: [CMD-SHELL, pg_isready -U drill]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    mem_limit: 128m
+    pids_limit: 64
+
+  canary:
+    image: python:3.12-slim
+    profiles: [full]
+    command: [python, -u, /fixture/canary.py, serve]
+    volumes:
+      - ./tests/fixtures/drills:/fixture:ro
+      - control:/control
+      - logs:/logs
+    tmpfs: [/pressure:size=64m]
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.5
+    pids_limit: 32
+    cap_add: [SYS_RESOURCE]
+    healthcheck:
+      test: [CMD, python, /fixture/canary.py, health]
+      interval: 1s
+      timeout: 2s
+      retries: 2
+
+  restart-target:
+    image: python:3.12-slim
+    profiles: [full]
+    command: [python, -u, /fixture/canary.py, restart]
+    restart: "on-failure:5"
+    volumes:
+      - ./tests/fixtures/drills:/fixture:ro
+      - control:/control:ro
+    mem_limit: 32m
+    pids_limit: 16
+
+  vector:
+    image: timberio/vector:0.60.0-debian
+    profiles: [full]
+    environment:
+      VECTOR_THREADS: "1"
+    volumes:
+      - ./tests/fixtures/drills/vector.yaml:/etc/vector/vector.yaml:ro
+      - logs:/logs:ro
+    mem_limit: 96m
+    pids_limit: 32
+
+  smtp-proxy:
+    image: python:3.12-slim
+    profiles: [full]
+    command: [python, -u, /fixture/smtp_proxy.py]
+    volumes:
+      - ./tests/fixtures/drills:/fixture:ro
+    mem_limit: 32m
+    pids_limit: 16
 
   drill-alerter:
     image: python:3.12-slim
-    profiles: ["full"]
-    working_dir: /app
+    profiles: [full]
+    volumes:
+      - ./scripts/drill_alerter.py:/app/drill_alerter.py:ro
+      - ${DRILL_CERT_DIR}:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      ALERT_TO: dev@dtcdev.click
+      SMTP_HOST: smtp-proxy
+      HTTP_URL: https://target-http/
+      SSL_CERT_FILE: /certs/ca.crt
+      ALERT_HOLD: "4"
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-coolify-obs-drills}
+    command: [python, -u, /app/drill_alerter.py]
+    mem_limit: 64m
+    pids_limit: 32
+    networks: [default, observer]
+
+  # Models a separately hosted observer: no monitored-service dependencies,
+  # no sensor/socket access, and an independent network and SMTP path.
+  external-deadman:
+    image: python:3.12-slim
+    profiles: [full]
     volumes:
       - ./scripts/drill_alerter.py:/app/drill_alerter.py:ro
     environment:
-      ALERT_TO: "dev@dtcdev.click"
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      HTTP_URL: http://target-http/
-      PG_HOST: target-pg
-      OO_HEALTH_URL: http://victoria-metrics:8428/health
-      POLL_INTERVAL: "2"
-    command: ["python", "-u", "/app/drill_alerter.py"]
-    depends_on:
-      - mailpit
-      - target-http
-      - target-pg
-      - victoria-metrics
+      MODE: deadman
+      ALERT_TO: dev@dtcdev.click
+      ALERT_HOLD: "4"
+    command: [python, -u, /app/drill_alerter.py]
+    mem_limit: 48m
+    pids_limit: 32
+    networks: [observer]
+
+volumes:
+  control:
+  logs:
 
 networks:
   default:
-    name: coolify-obs-drills
+  observer:
