@@ -383,6 +383,75 @@ def test_complaint_rate_sql_live(pg):
     assert got[("2026-10-21", _dims(client="cmp", stream="campaign"))] == pytest.approx(1.0)
     assert got[("2026-10-21", _dims(client="cmp", stream="tx"))] == pytest.approx(0.0)
 
+
+@pytest.mark.parametrize("event,metric", [
+    ("bounce", "relay_bounce_rate"),
+    ("complaint", "relay_complaint_rate"),
+])
+def test_rate_sql_utc_bounds_unscoped_events_and_zero_sends(pg, event, metric):
+    _exec(pg, RELAY_FIXTURES)
+    _exec(pg, "TRUNCATE email_events")
+    # Test UTC grain independently of the session timezone. The first send
+    # is exactly at start; the final two sends fall outside [start, end).
+    with pg.transaction():
+        _exec(pg, "SET LOCAL TIME ZONE 'Europe/Berlin'")
+        _exec(pg, """INSERT INTO email_events
+            (client_id, campaign_id, transactional_message_id, event_type, created_at)
+            VALUES
+            (1, NULL, 101, 'sent', '2026-10-21T00:00:00+00'),
+            (1, NULL, 102, 'sent', '2026-10-21T23:59:59+00'),
+            (1, NULL, 101, %(event)s, '2026-10-21T08:00:00+00'),
+            (1, 10, NULL, %(event)s, '2026-10-21T09:00:00+00'),
+            (1, NULL, NULL, 'sent', '2026-10-21T09:00:00+00'),
+            (1, NULL, NULL, %(event)s, '2026-10-21T09:00:00+00'),
+            (1, NULL, 101, 'sent', '2026-10-21T00:00:00+02'),
+            (1, NULL, 101, 'sent', '2026-10-22T00:00:00+00')
+        """, {"event": event})
+        got = _rows_by_day_dims(_exec(pg, _read(metric + ".sql"), {
+            "start": "2026-10-21T00:00:00+00",
+            "end": "2026-10-22T00:00:00+00",
+        }))
+    assert got == {
+        ("2026-10-21", _dims(client="cmp", stream="tx")): 0.5,
+        ("2026-10-21", _dims(client="cmp", stream="campaign")): None,
+    }
+
+
+def test_relay_runner_backfill_replaces_status_and_undefined_rate_slices(pg):
+    # Exercise real source SQL and the durable store together, including
+    # disappearing dimensions. All fixtures live in a rolled-back schema.
+    with pg.transaction(force_rollback=True):
+        _exec(pg, "CREATE SCHEMA relay_runner_test")
+        _exec(pg, "SET LOCAL search_path TO relay_runner_test")
+        _exec(pg, RELAY_FIXTURES)
+        _exec(pg, (ROOT / "schema.sql").read_text())
+        days = [dt.date(2026, 10, 20), dt.date(2026, 10, 21)]
+        initial = []
+        for metric in RELAY_METRICS:
+            initial.extend(rollup.run_source(pg, pg, metric, days, False))
+        assert len(initial) == 11
+        assert {row["series"] for row in initial} == set(RELAY_METRICS)
+
+        _exec(pg, """UPDATE transactional_messages SET status='failed'
+            WHERE client_id=1 AND created_at >= '2026-10-21T00:00:00+00'""")
+        _exec(pg, "UPDATE campaign_recipients SET status='pending' WHERE status='skipped'")
+        _exec(pg, "DELETE FROM email_events WHERE event_type='sent'")
+        for _ in range(2):
+            current = []
+            for metric in RELAY_METRICS:
+                current.extend(rollup.run_source(pg, pg, metric, days, False))
+            stored = _exec(pg, "SELECT metric, day, dims, value FROM metric_daily")
+            observed = {(metric, day, json.dumps(dims, sort_keys=True)): value
+                        for metric, day, dims, value in stored}
+            expected = {(r['series'], r['day'], json.dumps(r['dims'], sort_keys=True)): r['value']
+                        for r in current}
+            assert observed == expected
+            assert len(stored) == 5
+            assert not any(r[0] in {"relay_bounce_rate", "relay_complaint_rate"} for r in stored)
+            assert observed[("relay_tx_messages", days[1],
+                             _dims(client="cmp", status="failed", template_key="login"))] == 3
+
+
 def _seed_tx(con: sqlite3.Connection):
     con.execute("CREATE TABLE clients(id INTEGER PRIMARY KEY, slug TEXT)")
     con.execute("""CREATE TABLE transactional_messages(

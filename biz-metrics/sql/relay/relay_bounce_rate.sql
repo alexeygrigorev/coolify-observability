@@ -5,9 +5,9 @@
 -- 'campaign' when campaign_id IS NOT NULL. Rows with neither are excluded.
 -- Day boundary: UTC calendar day; day taken from created_at.
 -- Labels: client (clients.slug), stream. No PII, no campaign_id label.
--- Zero-guard: NULLIF(sent, 0) → NULL rate when there were no sends (runner
--- skips NULL rows for the VM push but still stores counts via the companion
--- base query; see runner.derive_rates).
+-- Zero-guard: NULLIF(sent, 0) → NULL rate when there were no sends.
+-- The runner skips NULL rows for both storage and VM; no companion counts
+-- or synthetic zero-rate samples are written.
 -- Returns: (day DATE, dims JSONB, value NUMERIC rate 0..1).
 -- Bind params: %(start)s (inclusive timestamptz), %(end)s (exclusive timestamptz).
 
