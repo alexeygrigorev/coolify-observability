@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  biz-metrics-plumbing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run biz-metrics plumbing tests (no docker, no secrets)
+        run: python -m pytest biz-metrics/tests/ -v --tb=short
+
+  docker-alert-drills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test deps
+        run: pip install -r tests/requirements.txt
+
+      - name: Bring up Mailpit (SMTP capture for alert asserts)
+        run: docker compose -f docker-compose.test.yml up -d mailpit
+
+      - name: Wait for Mailpit
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8025/api/v1/info >/dev/null; then
+              echo "mailpit ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "mailpit did not become ready" >&2
+          docker compose -f docker-compose.test.yml ps
+          exit 1
+
+      - name: Run alert drill tests
+        run: python -m pytest tests/ -v --tb=short
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v || true
