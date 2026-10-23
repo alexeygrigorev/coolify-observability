@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -119,7 +120,8 @@ def test_sql_static_checks():
         # dims carry only the declared low-cardinality labels
         dims_keys = _dims_keys(sql)
         assert dims_keys == EXPECTED_DIMS[metric], (metric, dims_keys)
-        lowered = _dims_expr(sql).lower()
+        # Inspect column identifiers; a literal source named email is safe.
+        lowered = re.sub(r"'[^']*'", "", _dims_expr(sql)).lower()
         for token in ("email", "ip_address", "phone"):
             assert token not in lowered, (metric, token)
         assert "user_id" not in lowered, metric
@@ -221,20 +223,20 @@ CREATE TABLE metric_daily (
 
 
 def _start_postgres():
-    name = "bizmetrics-pg-test"
-    subprocess.run(["docker", "rm", "-f", name],
-                   capture_output=True, check=False)
+    name = "bizmetrics-pg-" + uuid.uuid4().hex[:12]
     r = subprocess.run(
         ["docker", "run", "-d", "--rm", "--name", name,
          "-e", "POSTGRES_PASSWORD=biztest",
          "-e", "POSTGRES_USER=biztest",
          "-e", "POSTGRES_DB=biztest",
-         "-p", "127.0.0.1:54333:5432",
+         "-p", "127.0.0.1::5432",
          "postgres:16-alpine"],
         capture_output=True, text=True, check=False)
     if r.returncode != 0:
         pytest.skip(f"docker postgres unavailable: {r.stderr.strip()[:200]}")
-    dsn = "host=127.0.0.1 port=54333 dbname=biztest user=biztest password=biztest"
+    port = subprocess.check_output(
+        ["docker", "port", name, "5432/tcp"], text=True).strip().rsplit(":", 1)[1]
+    dsn = f"host=127.0.0.1 port={port} dbname=biztest user=biztest password=biztest"
     deadline = time.time() + 60
     while time.time() < deadline:
         try:
@@ -251,6 +253,7 @@ def _start_postgres():
 def pg_dsn():
     if os.environ.get("SKIP_PG_FIXTURE") == "1":
         pytest.skip("SKIP_PG_FIXTURE=1")
+    pytest.importorskip("psycopg")
     try:
         subprocess.run(["docker", "info"], capture_output=True, check=True)
     except Exception:

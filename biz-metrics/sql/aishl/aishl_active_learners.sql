@@ -14,8 +14,8 @@
 -- Params (psycopg): %(start)s, %(end)s as UTC day boundaries, [start, end).
 
 WITH bounds AS (
-    SELECT (%(start)s::date
-        - ((EXTRACT(ISODOW FROM %(start)s::date)::int) - 1)) AS mon
+    SELECT date_trunc('week', %(start)s::timestamptz AT TIME ZONE 'UTC')
+           AT TIME ZONE 'UTC' AS mon
 ),
 week_users AS (
     SELECT ua.occurred_at AS occurred_at,
@@ -30,14 +30,12 @@ week_users AS (
       LEFT JOIN cb_curriculum_unit AS u
         ON ua.event_type = 'lesson_open'
        AND ua.object_type = 'unit'
-       AND u.id = CASE
-               WHEN ua.object_id ~ '^[0-9]+$' THEN ua.object_id::integer
-           END
+       AND u.id::text = ua.object_id
       LEFT JOIN cb_curriculum_module AS m ON m.id = u.module_id
       LEFT JOIN cb_curriculum_course AS c ON c.id = m.course_id
      WHERE ua.event_type IN ('lesson_open', 'resource_view')
        AND ua.occurred_at >= (SELECT mon FROM bounds)
-       AND ua.occurred_at < (SELECT mon FROM bounds) + 7
+       AND ua.occurred_at < (SELECT mon FROM bounds) + INTERVAL '168 hours'
 ),
 day_users AS (
     SELECT * FROM week_users
@@ -52,13 +50,12 @@ per_course_day AS (
      GROUP BY 1, 2
 ),
 overall_day AS (
-    SELECT (occurred_at AT TIME ZONE 'UTC')::date AS day,
+    SELECT (%(start)s::timestamptz AT TIME ZONE 'UTC')::date AS day,
            'all' AS course, COUNT(DISTINCT user_id)::numeric AS value
       FROM day_users
-     GROUP BY 1
 ),
 overall_week AS (
-    SELECT (SELECT mon FROM bounds) AS day,
+    SELECT ((SELECT mon FROM bounds) AT TIME ZONE 'UTC')::date AS day,
            'all' AS course, COUNT(DISTINCT user_id)::numeric AS value
       FROM week_users
 )

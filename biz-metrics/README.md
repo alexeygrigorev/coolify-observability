@@ -156,8 +156,19 @@ psql "$BIZ_METRICS_STORE_DSN" -c "SELECT dims, value FROM metric_daily
   `billing_period` → `'one-off'`; blank `utm_source` → `'none'`;
   one-off `mrr_eur` NULL sums to 0. Pre-shipping subscriptions have no
   `ConversionAttribution` rows (no backfill) — those days read 0, not gaps.
-- No PII labels: dims carry only the declared low-cardinality labels
-  (tests reject `user_id` / `email` / `ip` in any dims expression).
+- UTM sources use a fixed public-source allowlist: `telegram`, `newsletter`,
+  `linkedin`, `youtube`, `google`, `github`, `twitter`, `slack`, `datatalks`,
+  `email`. Values are trimmed and case folded; blank becomes `none`, and
+  everything else becomes `other`. Arbitrary source values never enter
+  `metric_daily` or VM labels. Billing periods are limited to `monthly`,
+  `yearly`, `one-off`, and `other`. Course/tier slugs are operator-controlled.
+- Every empty day has a zero row: lessons use `course=unknown`, learners
+  use `course=all,grain=day`, signups use `utm_source=none`, and conversions
+  and MRR use `tier=course,billing_period=one-off,utm_source=none`.
+  These zero buckets indicate no events; they do not add counts.
+- UTC week boundaries are explicit and remain stable across database
+  timezone changes and daylight saving transitions. Numeric object IDs
+  are matched as canonical text so malformed or oversized values are safe.
 - Table names verified 2026-10-22 against the aisl checkout:
   `analytics_useractivity`, `analytics_userattribution` (PK `user_id`),
   `cb_curriculum_unit → cb_curriculum_module → cb_curriculum_course (slug)`
@@ -174,7 +185,7 @@ Hand-check one historic day (pg-shared, DB aisl):
 ```bash
 psql "$BIZ_METRICS_AISHL_DSN" -c "SELECT c.slug, COUNT(*) FROM analytics_useractivity ua
   LEFT JOIN cb_curriculum_unit u ON ua.object_type='unit'
-    AND u.id = CASE WHEN ua.object_id ~ '^[0-9]+\$' THEN ua.object_id::integer END
+    AND u.id::text = ua.object_id
   LEFT JOIN cb_curriculum_module m ON m.id = u.module_id
   LEFT JOIN cb_curriculum_course c ON c.id = m.course_id
   WHERE ua.event_type='lesson_open'
