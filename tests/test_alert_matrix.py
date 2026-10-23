@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
-import time
 import urllib.request
 
 import pytest
 
-from conftest import ALERT_EMAILS, COMPOSE_FILE, MAILPIT, ROOT, clear_mail, wait_mail
+from conftest import COMPOSE_FILE, MAILPIT, ROOT, clear_mail, wait_mail
 
 
 def _compose(*args: str) -> None:
@@ -21,10 +21,20 @@ def _compose(*args: str) -> None:
     assert r.returncode == 0, r.stderr + r.stdout
 
 
-def test_matrix_ids_complete():
-    assert {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"} == {
-        "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"
-    }
+def test_matrix_ids_complete(request):
+    """Require one collected drill or explicit placeholder for every matrix ID."""
+    ids = []
+    for item in request.session.items:
+        if item.path != request.node.path:
+            continue
+        match = re.match(r"test_(A[1-8])_", item.originalname or item.name)
+        if match:
+            ids.append(match.group(1))
+        elif getattr(item, "callspec", None):
+            case_id = item.callspec.params.get("case_id")
+            if case_id:
+                ids.append(case_id)
+    assert sorted(ids) == [f"A{i}" for i in range(1, 9)], ids
 
 
 @pytest.mark.usefixtures("drill_stack")
@@ -57,7 +67,7 @@ def test_A6_store_gap():
         wait_mail("FIRE store", timeout=60)
     finally:
         _compose("start", "victoria-metrics")
-        time.sleep(3)
+        wait_mail("CLEAR store")
 
 
 @pytest.mark.usefixtures("drill_stack")
@@ -65,13 +75,14 @@ def test_A8_alert_email_only_dev_recipient(alert_emails):
     clear_mail()
     _compose("stop", "target-http")
     try:
-        wait_mail("FIRE https")
+        message = wait_mail("FIRE https")
     finally:
         _compose("start", "target-http")
     with urllib.request.urlopen(f"{MAILPIT}/api/v1/messages", timeout=5) as r:
         data = json.load(r)
     blob = json.dumps(data)
-    assert alert_emails == ["alexey@datatalks.club", "dev@dtcdev.click"]
+    assert alert_emails == ["dev@dtcdev.click"]
+    assert [recipient["Address"] for recipient in message["To"]] == alert_emails
     for addr in alert_emails:
         assert addr in blob, f"missing recipient {addr} in {blob[:500]}"
     assert "mail.grokbot.com" not in blob, f"grokbot recipient must be absent: {blob[:500]}"

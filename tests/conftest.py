@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = str(ROOT / "docker-compose.test.yml")
 MAILPIT = os.environ.get("MAILPIT_URL", "http://127.0.0.1:8025")
-ALERT_EMAILS = ["alexey@datatalks.club", "dev@dtcdev.click"]
+ALERT_EMAILS = ["dev@dtcdev.click"]
 ALERT_EMAIL = ALERT_EMAILS[0]
 
 
@@ -46,9 +46,8 @@ def drill_stack():
         pytest.skip("docker not available")
     r = _compose("--profile", "full", "up", "-d", "--wait")
     if r.returncode != 0:
-        r = _compose("--profile", "full", "up", "-d")
-        assert r.returncode == 0, r.stderr + r.stdout
-        time.sleep(8)
+        _compose("--profile", "full", "down", "-v")
+        pytest.fail(r.stderr + r.stdout)
     deadline = time.time() + 60
     while time.time() < deadline:
         try:

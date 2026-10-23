@@ -4,7 +4,7 @@ name: coolify-obs-drills
 services:
   mailpit:
     image: axllent/mailpit:v1.21
-    ports: ["1025:1025", "8025:8025"]
+    ports: ["127.0.0.1:8025:8025"]
 
   victoria-metrics:
     image: victoriametrics/victoria-metrics:v1.115.0
@@ -16,7 +16,6 @@ services:
       - -httpListenAddr=:8428
     volumes:
       - ./configs/vm/prometheus.test.yml:/etc/vm/prometheus.yml:ro
-    ports: ["8428:8428"]
     mem_limit: 128m
 
   victoria-logs:
@@ -26,13 +25,11 @@ services:
       - -retentionPeriod=1d
       - -memory.allowedBytes=67108864
       - -httpListenAddr=:9428
-    ports: ["9428:9428"]
     mem_limit: 128m
 
   target-http:
     image: nginx:1.27-alpine
     profiles: ["targets", "full"]
-    ports: ["8080:80"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 3s
@@ -46,7 +43,6 @@ services:
       POSTGRES_PASSWORD: drill
       POSTGRES_USER: drill
       POSTGRES_DB: drill
-    ports: ["5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U drill"]
       interval: 3s
@@ -60,7 +56,7 @@ services:
     volumes:
       - ./scripts/drill_alerter.py:/app/drill_alerter.py:ro
     environment:
-      ALERT_TO: "alexey@datatalks.club,dev@dtcdev.click"
+      ALERT_TO: "dev@dtcdev.click"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       HTTP_URL: http://target-http/

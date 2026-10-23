@@ -45,6 +45,12 @@ tests/                        # A1–A8 fault-injection
 
 ## Local drills
 
+Docker alert fault-injection is mandatory for the thin custom alert layer.
+Storage stays in existing VictoriaMetrics/VictoriaLogs; this repo does not build
+a storage engine. See [the A1–A8 matrix](tests/README.md) for implemented drills
+and explicit placeholders. A green scaffold CI run includes placeholders and
+does not establish complete production alert coverage.
+
 ```bash
 pip install -r tests/requirements.txt
 docker compose -f docker-compose.test.yml --profile full up -d
@@ -53,6 +59,10 @@ docker compose -f docker-compose.test.yml --profile full down -v
 ```
 
 ## Contabo paths
+
+Installation requires a separate, explicitly approved Contabo task after rule
+and drill review. This repository/plan task does not authorize installation or
+a Coolify deployment.
 
 - `/data/obs/docker-compose.yml` on `.163`
 - `/data/obs-exporters/docker-compose.yml` on `.141`

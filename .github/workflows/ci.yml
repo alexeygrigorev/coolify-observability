@@ -59,4 +59,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v || true
+        run: docker compose -f docker-compose.test.yml --profile full down -v

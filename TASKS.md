@@ -22,3 +22,25 @@ Plan: [849afb15-98ec-437c-a824-d96e4e8e800b](https://hub.dtcdev.click/#/intake/8
 | 10 | Obs retention + S3 archive (2d hot / 14d S3) | `t1031u` | — | `docs/retention-s3.md`; cron on `.163` |
 
 Never write sprint reports into dataops-knowledge.
+
+## Parent reconciliation follow-ups (2026-10-23)
+
+The plan and all three recommendation files were present before these intakes
+were filed. Historical child IDs above return `not_found` to this worker;
+reconcile them before implementation to avoid repeating completed work. These
+follow-ups have explicit acceptance criteria and reference the existing parent.
+No agent sessions were started and no Contabo installation was authorized.
+
+| Follow-up | Hub intake | Scope |
+| --- | --- | --- |
+| storage | `f1e82688-8460-4da2-847f-6cfdafbc6087` | Observability plan: reconcile storage and thin-layer ADR |
+| rules | `e5eaaafa-abbc-43db-ab61-ccd0a164daa2` | Observability plan: alert rules and coverage inventory |
+| drills | `936c606c-1928-427f-a54f-6b5adc385835` | Observability plan: complete A1–A8 Docker drill matrix |
+| install-gate | `9218b6bd-42cd-4a8d-b485-6f1531d23b46` | Observability plan: Contabo install gate and review checklist |
+| cycle | `f0ef7ed7-af69-4807-98e4-ec8487ef2be6` | Observability plan: Astra Argon Opus corner-case cross-review |
+
+The drill follow-up covers every A1–A8 case using [repository IDs](tests/README.md),
+plus the conflicting older plan scenarios. The install-gate intake requires a
+separate explicit operator approval before any host or Coolify write. CI is now
+active at `.github/workflows/ci.yml`; the historical workflow-scope blocker is
+resolved. The t1015u report records the ordered Astra/Argon/Opus review cycle.
