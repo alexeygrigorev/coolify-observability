@@ -42,10 +42,10 @@ rules:
   # Traefik leg (latency VM :8429, 30d). Recover hysteresis: p95 < 2.0s clears.
   - id: A10_service_p95_slow
     type: promql
-    expr: histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
+    expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
     for: 10m
     severity: critical
-    recover_expr: histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) < 2.0
+    recover_expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) < 2.0
     notify_to: dev@dtcdev.click
     notify_from: alerts@dtcdev.click
     repeat_min: 60

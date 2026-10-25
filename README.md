@@ -35,9 +35,9 @@ One PromQL p95 per service (30d, latency VM `:8429/vmui`):
 
 ```promql
 # Traefik per-service p95 (CMP, AISHL, Relay, website, ops, hub, dapier via service/router labels)
-histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m])))
 # Probe TTFB p95 per service (explicit service label, 30d)
-histogram_quantile(0.95, sum by (service) (rate(probe_ttfb_seconds_bucket[5m])))
+max by (service) (quantile_over_time(0.95, probe_ttfb_seconds[1h]))
 # Raw probe series (pushed): max TTFB by probe/service
 max by (probe, service) (probe_ttfb_seconds)
 ```
