@@ -22,6 +22,11 @@ import urllib.request
 ALERT_TO = os.environ.get('ALERT_TO', 'alexey@datatalks.club,dev@dtcdev.click')
 INTERVAL = float(os.environ.get('POLL_INTERVAL', '1'))
 HOLD = float(os.environ.get('ALERT_HOLD', '3'))
+# f5d8e22b latency drill (ops-only, like A1-A8): when LATENCY_URL is set,
+# measure GET duration; ok = < LATENCY_WARN_SEC (default 3s). HOLD gates
+# sustained firing (prod 600s via healthcheck; drills use short HOLD).
+LATENCY_URL = os.environ.get('LATENCY_URL', '')
+LATENCY_WARN_SEC = float(os.environ.get('LATENCY_WARN_SEC', '3'))
 STATE = {}
 PENDING = deque()
 RETRIES = 0
@@ -85,6 +90,15 @@ def checks():
         return {'deadman': ok}
     result = {'https': healthy(os.environ['HTTP_URL']),
               'store': healthy('http://victoria-metrics:8428/health')}
+    if LATENCY_URL:
+        start = time.monotonic()
+        try:
+            with urllib.request.urlopen(LATENCY_URL, timeout=5) as response:
+                response.read(1)
+            dur = time.monotonic() - start
+            result['latency'] = dur < LATENCY_WARN_SEC
+        except (OSError, ValueError):
+            result['latency'] = False
     try:
         with socket.create_connection(('target-pg', 5432), timeout=2):
             result['postgres'] = True

@@ -1,5 +1,6 @@
 # Declarative alert rules for obs-alertd / vmalert.
-# Email destinations: alexey@datatalks.club + dev@dtcdev.click (t1205u).
+# Email destinations: ONLY dev@dtcdev.click (f5d8e22b slowness; standing: alerts@dtcdev.click From).
+# Hysteresis: fire 2.5s/3.0s, recover 2.0s/2.5s; max 1 repeat/hour; RECOVERED mail.
 rules:
   - id: A1_https_down
     type: http
@@ -35,3 +36,25 @@ rules:
     expr: (time() - max(dr_fast_pg_raise_last_success_unixtime)) > 691200 or absent(dr_fast_pg_raise_last_success_unixtime)
     for: 1h
     severity: critical
+
+  # f5d8e22b AC3: slowness — service p95 > 2.5s OR probe TTFB > 3s, >=10min.
+  # Mail ONLY to dev@dtcdev.click from alerts@dtcdev.click, RECOVERED, 1/hour.
+  # Traefik leg (latency VM :8429, 30d). Recover hysteresis: p95 < 2.0s clears.
+  - id: A10_service_p95_slow
+    type: promql
+    expr: histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
+    for: 10m
+    severity: critical
+    recover_expr: histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) < 2.0
+    notify_to: dev@dtcdev.click
+    notify_from: alerts@dtcdev.click
+    repeat_min: 60
+  - id: A11_probe_ttfb_slow
+    type: promql
+    expr: max by (probe, service) (probe_ttfb_seconds) > 3
+    for: 10m
+    severity: critical
+    recover_expr: max by (probe, service) (probe_ttfb_seconds) < 2.5
+    notify_to: dev@dtcdev.click
+    notify_from: alerts@dtcdev.click
+    repeat_min: 60

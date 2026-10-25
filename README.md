@@ -14,7 +14,49 @@ Lightweight observability for **Coolify on Contabo**.
 
 **Rejected for Contabo now:** OpenObserve (partial install torn down). Fallback remains documented only if VM/VL fails soak.
 
-Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi.
+Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi / latency-VM 256Mi.
+
+## HTTP response time + slowness (f5d8e22b)
+
+Traefik Prometheus metrics on both proxies (internal `:8082`, bound to
+`127.0.0.1` + `10.100.0.x` only — never public; see
+machine-management `edge/install-traefik-metrics.sh`). VM scrapes over
+WireGuard (`configs/vm/prometheus.yml` `traefik` job).
+
+Latency store: `victoria-metrics-latency` on `.163` `:8429`
+(`-retentionPeriod=30d`, 256Mi cap) holds low-cardinality series only
+(traefik per-service + `probe_ttfb/total`); main VM stays 2d (47k
+node/cadvisor series would OOM at 30d under 256Mi). Probes:
+`coolify-healthcheck` (Contabo) + `contabo-deadman` (Hetzner, via SSH)
+record `probe_ttfb_seconds` / `probe_total_seconds` per URL for CMP home +
+course, AISHL home + content, Relay /health, website home + /events/past.
+
+One PromQL p95 per service (30d, latency VM `:8429/vmui`):
+
+```promql
+# Traefik per-service p95 (CMP, AISHL, Relay, website, ops, hub, dapier via service/router labels)
+histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m])))
+# Probe TTFB p95 per service (explicit service label, 30d)
+histogram_quantile(0.95, sum by (service) (rate(probe_ttfb_seconds_bucket[5m])))
+# Raw probe series (pushed): max TTFB by probe/service
+max by (probe, service) (probe_ttfb_seconds)
+```
+
+Slowness alert (AC3): service p95 > 2.5s OR probe TTFB > 3s for >=10m
+→ mail ONLY `dev@dtcdev.click` from `alerts@dtcdev.click`, RECOVERED,
+max 1/hour, hysteresis (recover <2.0s / <2.5s). See `alerts/rules.yaml`
+A10/A11. Drill: injected-delay like A1-A8, ops-only, never mutes prod.
+
+AWS ALB history (AC5, read + S3 put only, profile `main-temp`, eu-west-1):
+
+```
+s3://dtc-coolify-backups-387546586013/coolify/obs/latency/alb/YYYY/MM/DD/alb-target-response-<day>.csv
+```
+
+Hourly `p50,p95,p99,SampleCount` for
+`app/aisl-alb/…`, `app/course-management-shared/…`,
+`app/website-production-alb/…` via `scripts/latency-alb-export.sh --day YYYY-MM-DD`
+(ver 2026-10-18..24 exported; 10-23/24 empty — traffic on Contabo by then).
 
 ## Alert destinations
 

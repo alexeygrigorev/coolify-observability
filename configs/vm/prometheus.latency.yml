@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  external_labels:
+    fleet: contabo-coolify
+    env: production
+    tier: latency-30d
+
+scrape_configs:
+  - job_name: victoria-metrics-latency
+    static_configs:
+      - targets: ["127.0.0.1:8429"]
+        labels: { host: contabo-a }
+
+  # AC1: Traefik metrics over WireGuard (internal 8082, never public).
+  - job_name: traefik
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["10.100.0.1:8082"]
+        labels: { host: contabo-a, proxy: coolify-proxy }
+      - targets: ["10.100.0.2:8082"]
+        labels: { host: contabo-b, proxy: coolify-proxy }

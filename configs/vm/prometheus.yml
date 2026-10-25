@@ -35,3 +35,15 @@ scrape_configs:
         labels: { host: contabo-b, instance_name: pg-relay }
       - targets: ["10.100.0.2:9188"]
         labels: { host: contabo-b, instance_name: pg-shared }
+
+  # f5d8e22b AC1: Traefik Prometheus metrics, internal 8082 over WireGuard.
+  # Enabled by machine-management edge/install-traefik-metrics.sh (bound to
+  # 127.0.0.1 + 10.100.0.x only, never public). P95 per service:
+  # histogram_quantile(0.95, sum by (service) (rate(traefik_service_request_duration_seconds_bucket[5m])))
+  - job_name: traefik
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["10.100.0.1:8082"]
+        labels: { host: contabo-a, proxy: coolify-proxy }
+      - targets: ["10.100.0.2:8082"]
+        labels: { host: contabo-b, proxy: coolify-proxy }

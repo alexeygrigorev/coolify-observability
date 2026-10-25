@@ -39,6 +39,30 @@ services:
     memswap_limit: 256m
     cpus: "0.5"
 
+  # f5d8e22b AC1: dedicated low-cardinality latency store, 30d retention.
+  # Main VM stays 2d (47k series node/cadvisor would OOM at 30d under 256Mi);
+  # latency series are ~dozens (traefik per-service + probe_ttfb/total),
+  # so 30d fits comfortably in 256Mi. Push path:
+  # healthcheck/deadman -> :8429/api/v1/import/prometheus (WG/SSH).
+  victoria-metrics-latency:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    container_name: victoria-metrics-latency
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-latency-data
+      - -retentionPeriod=30d
+      - -memory.allowedBytes=134217728
+      - -search.maxUniqueTimeseries=50000
+      - -promscrape.config=/etc/vm-latency/prometheus.latency.yml
+      - -httpListenAddr=:8429
+    volumes:
+      - /data/obs/vm-latency:/victoria-metrics-latency-data
+      - /data/obs/configs/vm/prometheus.latency.yml:/etc/vm-latency/prometheus.latency.yml:ro
+    network_mode: host
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: "0.5"
+
   vector-a:
     image: timberio/vector:0.60.0-debian
     container_name: vector-contabo-a
