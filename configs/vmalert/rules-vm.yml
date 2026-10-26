@@ -1,0 +1,136 @@
+# vmalert VM rules — Contabo prod (reviewed, dev@ only)
+# Datasource: http://127.0.0.1:8428 (main VM). Notifier: Alertmanager :9093.
+# Each rule maps to tests/README.md repository IDs A1-A6. A7 lives in rules-vl.yml.
+# A8 is a routing property (dev-only + retry), proven by every drill's mail.
+# All thresholds are currently OK (no firing); drills make exactly one fire + clear.
+# DECISION t1468u: approved for prod; drills to dev@ only; never mute real prod alerts.
+
+groups:
+- name: obs-a1-https
+  interval: 30s
+  rules:
+  - alert: A1_https_down
+    expr: probe_success{job="blackbox-https"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      class: A1
+    annotations:
+      summary: "A1 HTTPS probe down (blackbox, prod-safe canary fault)"
+      description: "probe_success==0 for 1m. Drill: firewall blackbox egress to one target only; clear: remove rule. Real site stays up."
+  - alert: A1_blackbox_down
+    expr: up{job="blackbox-https"} == 0
+    for: 1m
+    labels:
+      severity: warning
+      class: A1
+    annotations:
+      summary: "A1 blackbox prober scrape down"
+      description: "Blackbox exporter itself unreachable; drill uses target egress block, not prober stop."
+
+- name: obs-a2-disk
+  interval: 30s
+  rules:
+  - alert: A2_disk_pressure
+    expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+    for: 2m
+    labels:
+      severity: warning
+      class: A2
+    annotations:
+      summary: "A2 root disk low (<15% free)"
+      description: "Root filesystem free <15%. Real guard (currently ~89% free); drill uses synthetic canary below, never fills root."
+  # Live probe 2026-10-26: node_exporter does not expose /tmp/obs-a2 tmpfs (no series after 35s),
+  # so the real tmpfs canary cannot fire. Synthetic canary proves vmalert->AM->dev@ path for A2 class.
+  - alert: A2_disk_canary
+    expr: obs_drill_disk_free_ratio < 0.2
+    for: 1m
+    labels:
+      severity: warning
+      class: A2
+    annotations:
+      summary: "A2 drill canary low (<20% free, synthetic)"
+      description: "Drill: push obs_drill_disk_free_ratio 0.1 to fire, 0.9 to clear via VM import API. No host disk touched."
+
+- name: obs-a3-ram
+  interval: 30s
+  rules:
+  - alert: A3_ram_pressure
+    expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+    for: 2m
+    labels:
+      severity: critical
+      class: A3
+    annotations:
+      summary: "A3 host memory low (<10% available)"
+      description: "Host MemAvailable <10%. Real guard (currently ~90% free); drill uses synthetic canary below, never exhausts host."
+  # Live probe 2026-10-26: cadvisor exposes only system slices, no Docker container names/ids,
+  # so container_memory_* canary cannot fire. Synthetic canary proves pipeline for A3 class.
+  - alert: A3_canary_oom
+    expr: obs_drill_mem_free_ratio < 0.2
+    for: 1m
+    labels:
+      severity: warning
+      class: A3
+    annotations:
+      summary: "A3 drill canary low (<20% free, synthetic)"
+      description: "Drill: push obs_drill_mem_free_ratio 0.1 to fire, 0.9 to clear. Host RAM untouched."
+
+- name: obs-a4-postgres
+  interval: 30s
+  rules:
+  - alert: A4_postgres_down
+    expr: up{job="postgres"} == 0 or pg_up == 0
+    for: 1m
+    labels:
+      severity: critical
+      class: A4
+    annotations:
+      summary: "A4 postgres exporter/pg down"
+      description: "up{job=\"postgres\"}==0 or pg_up==0. Drill: stop exporter only (never PG) ≤2m; clear: restart exporter."
+
+- name: obs-a5-container
+  interval: 30s
+  rules:
+  # Live probe 2026-10-26: container_last_seen has no `name` label and no Docker ids
+  # (only system.slice), so absent-by-name would false-fire. Synthetic canary instead.
+  - alert: A5_canary_missing
+    expr: obs_drill_container_healthy == 0
+    for: 1m
+    labels:
+      severity: warning
+      class: A5
+    annotations:
+      summary: "A5 drill canary unhealthy (synthetic)"
+      description: "Drill: push obs_drill_container_healthy 0 to fire, 1 to clear. obs-a5-canary container runs as existence proof; health signal is synthetic."
+  - alert: A5_cadvisor_down
+    expr: up{job="cadvisor"} == 0
+    for: 2m
+    labels:
+      severity: warning
+      class: A5
+    annotations:
+      summary: "A5 cadvisor pipeline down"
+      description: "Container metadata pipeline down; drill uses synthetic canary above, never touches app containers."
+
+- name: obs-a6-scrape-gap
+  interval: 30s
+  rules:
+  - alert: A6_scrape_gap
+    expr: up{job="node"} == 0
+    for: 2m
+    labels:
+      severity: warning
+      class: A6
+    annotations:
+      summary: "A6 node scrape gap"
+      description: "Drill: pause single node exporter ≤2m; clear: restart. Separate store-gap path via external healthcheck."
+  - alert: A6_store_down
+    expr: up{job="victoria-metrics"} == 0 or up{job="victoria-logs"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      class: A6
+    annotations:
+      summary: "A6 store scrape down"
+      description: "VM/VL scrape down. Full store outage uses external dead-man (healthcheck), not in-band vmalert alone."

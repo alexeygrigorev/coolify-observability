@@ -80,3 +80,95 @@ services:
     depends_on:
       - victoria-logs
       - victoria-metrics
+
+  # bc9b3f30: stock alerting (ADR-0001). Approved t1468u. Drills to dev@ only.
+  # Resource ceilings: blackbox 64M, vmalert 96M x2, alertmanager 96M, canary 16M.
+  blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: obs-blackbox
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+      - --web.listen-address=127.0.0.1:9115
+    volumes:
+      - /data/obs/configs/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    network_mode: host
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: "0.25"
+
+  vmalert-vm:
+    image: victoriametrics/vmalert:v1.115.0
+    container_name: obs-vmalert-vm
+    restart: unless-stopped
+    command:
+      - -datasource.url=http://127.0.0.1:8428
+      - -notifier.url=http://127.0.0.1:9093
+      - -remoteWrite.url=http://127.0.0.1:8428
+      - -remoteRead.url=http://127.0.0.1:8428
+      - -evaluationInterval=30s
+      - -rule=/etc/vmalert/rules-vm.yml
+      - -external.label=fleet=contabo-coolify
+      - -external.label=evaluator=vmalert-vm
+      - -httpListenAddr=127.0.0.1:8880
+    volumes:
+      - /data/obs/rules/rules-vm.yml:/etc/vmalert/rules-vm.yml:ro
+    network_mode: host
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: "0.25"
+    depends_on:
+      - victoria-metrics
+
+  vmalert-vl:
+    image: victoriametrics/vmalert:v1.115.0
+    container_name: obs-vmalert-vl
+    restart: unless-stopped
+    command:
+      - -datasource.url=http://127.0.0.1:9428
+      - -rule.defaultRuleType=vlogs
+      - -notifier.url=http://127.0.0.1:9093
+      - -remoteWrite.url=http://127.0.0.1:8428
+      - -remoteRead.url=http://127.0.0.1:8428
+      - -evaluationInterval=2m
+      - -rule=/etc/vmalert/rules-vl.yml
+      - -external.label=fleet=contabo-coolify
+      - -external.label=evaluator=vmalert-vl
+      - -httpListenAddr=127.0.0.1:8881
+    volumes:
+      - /data/obs/rules/rules-vl.yml:/etc/vmalert/rules-vl.yml:ro
+    network_mode: host
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: "0.25"
+    depends_on:
+      - victoria-logs
+      - victoria-metrics
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: obs-alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:9093
+      - --cluster.listen-address=
+    volumes:
+      - /data/obs/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /data/alertmanager-data:/alertmanager
+    network_mode: host
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: "0.25"
+
+  # A5 canary: tiny sleep, always running; cadvisor exposes container_last_seen.
+  obs-a5-canary:
+    image: alpine:3.20
+    container_name: obs-a5-canary
+    restart: unless-stopped
+    command: ["sleep", "infinity"]
+    network_mode: none
+    mem_limit: 16m
+    memswap_limit: 16m
+    cpus: "0.05"

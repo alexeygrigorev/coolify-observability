@@ -1,0 +1,28 @@
+# vmalert VL rules — Contabo prod log pipeline (reviewed, dev@ only)
+# Datasource: http://127.0.0.1:9428 (VictoriaLogs). Notifier: Alertmanager :9093.
+# Group type vlogs; vmalert appends _time:<interval> automatically (do not add time filter).
+# Currently OK (both hosts ship >>10 logs per 2m); drill stops vector-b ≤2m to fire, restart to clear.
+
+groups:
+- name: obs-a7-log-pipeline
+  type: vlogs
+  interval: 2m
+  rules:
+  - alert: A7_log_pipeline_gap
+    expr: '* | stats by (host) count() as log_count | filter log_count:<10'
+    for: 2m
+    labels:
+      severity: critical
+      class: A7
+    annotations:
+      summary: "A7 log pipeline gap (host ships <10 logs per 2m)"
+      description: "Drill: stop vector-b on .141 only ≤2m; clear: restart Vector, verify replay. Never stops both Vectors."
+  - alert: A7_log_error_burst
+    expr: '* ERROR | stats by (host) count() as err_count | filter err_count:>50'
+    for: 2m
+    labels:
+      severity: warning
+      class: A7
+    annotations:
+      summary: "A7 ERROR burst (>50 ERROR logs per 2m per host)"
+      description: "Error-burst path; drill uses canary ERROR injection in Docker suite, prod drill is pipeline-gap only."

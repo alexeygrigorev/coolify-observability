@@ -1,0 +1,44 @@
+# Alertmanager prod config TEMPLATE — dev@ only (t1468u DECISION).
+# NEVER commit real SMTP credentials. Installer on contabo-a injects them
+# from /etc/msmtprc (root 600) into /data/obs/alertmanager/alertmanager.yml (600).
+# Placeholders below are replaced on-host; this file is safe to commit review.
+# Real prod alerts are never muted; drills go to dev@ only (never alexey@).
+
+global:
+  resolve_timeout: 5m
+  # Injected on-host:
+  # smtp_smarthost: 'email-smtp.eu-west-1.amazonaws.com:587'
+  # smtp_from: 'noreply@datatalks.club'
+  # smtp_auth_username: '<from /etc/msmtprc user>'
+  # smtp_auth_password: '<from /etc/msmtprc password>'
+  # smtp_require_tls: true
+  smtp_smarthost: '__SMTP_SMARTHOST__'
+  smtp_from: 'noreply@datatalks.club'
+  smtp_auth_username: '__SMTP_USER__'
+  smtp_auth_password: '__SMTP_PASSWORD__'
+  smtp_require_tls: true
+
+route:
+  receiver: 'dev-only'
+  group_by: ['alertname', 'class']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+- name: 'dev-only'
+  email_configs:
+  - to: 'dev@dtcdev.click'
+    headers:
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+    html: |
+      {{ range .Alerts }}
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      {{ .Annotations.summary }}<br>
+      {{ .Annotations.description }}<br>
+      {{ end }}
+    text: |
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ end }}
+
+inhibit_rules: []
