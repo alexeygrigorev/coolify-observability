@@ -1,3 +1,4 @@
+PyYAML>=6.0
 pytest>=8.0
 requests>=2.31
 # Execute the business SQL fixtures in CI, using the runner's dependency.
