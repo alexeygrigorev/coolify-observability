@@ -40,6 +40,55 @@ groups:
     annotations:
       summary: "A2 root disk low (<15% free)"
       description: "Root filesystem free <15%. Real guard (currently ~89% free); drill uses synthetic canary below, never fills root."
+  # t1493u: real disk guards for ALL hosts (no host filter) and all persistent
+  # filesystems (fstype exclusion: tmpfs/overlay/squashfs/vfat/iso9660).
+  # Warn 80% used, crit 90% used, 24h fill prediction, inode exhaustion.
+  # All route via Alertmanager dev-only (prod routing verified: single receiver).
+  - alert: A2_disk_warn
+    expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} < 0.2
+    for: 5m
+    labels:
+      severity: warning
+      class: A2
+    annotations:
+      summary: "A2 disk space warn (<20% free, all hosts)"
+      description: "Filesystem free <20% for 5m on any host/mount (persistent fstypes only). Covers contabo-a and contabo-b, all persistent mounts."
+  - alert: A2_disk_crit
+    expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} < 0.1
+    for: 5m
+    labels:
+      severity: critical
+      class: A2
+    annotations:
+      summary: "A2 disk space crit (<10% free, all hosts)"
+      description: "Filesystem free <10% for 5m on any host/mount (persistent fstypes only). Immediate action; routes dev-only."
+  - alert: A2_disk_fill_predict
+    expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"}[6h], 24*3600) < 0
+    for: 30m
+    labels:
+      severity: warning
+      class: A2
+    annotations:
+      summary: "A2 disk predicted full within 24h (all hosts)"
+      description: "6h trend predicts avail <0 within 24h. Fires 30m sustained to avoid flapping on bursty writes."
+  - alert: A2_disk_inodes_warn
+    expr: node_filesystem_files_free{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} / node_filesystem_files{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} < 0.1
+    for: 10m
+    labels:
+      severity: warning
+      class: A2
+    annotations:
+      summary: "A2 disk inodes warn (<10% free, all hosts)"
+      description: "Inode free <10% for 10m on any host/mount (persistent fstypes only). Prevents no-space despite free bytes."
+  - alert: A2_disk_inodes_crit
+    expr: node_filesystem_files_free{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} / node_filesystem_files{fstype!~"tmpfs|overlay|squashfs|vfat|iso9660"} < 0.05
+    for: 10m
+    labels:
+      severity: critical
+      class: A2
+    annotations:
+      summary: "A2 disk inodes crit (<5% free, all hosts)"
+      description: "Inode free <5% for 10m on any host/mount. Immediate action; routes dev-only."
   # Live probe 2026-10-26: node_exporter does not expose /tmp/obs-a2 tmpfs (no series after 35s),
   # so the real tmpfs canary cannot fire. Synthetic canary proves vmalert->AM->dev@ path for A2 class.
   - alert: A2_disk_canary
