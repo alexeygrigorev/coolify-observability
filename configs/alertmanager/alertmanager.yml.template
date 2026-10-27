@@ -29,6 +29,7 @@ receivers:
 - name: 'dev-only'
   email_configs:
   - to: 'dev@dtcdev.click'
+    send_resolved: true
     headers:
       Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
     html: |

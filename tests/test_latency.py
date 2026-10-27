@@ -18,6 +18,16 @@ def test_rules_have_slowness():
     assert "> 3" in text
 
 
+def test_native_vmalert_has_a10():
+    text = (ROOT / "configs" / "vmalert" / "rules-vm.yml").read_text()
+    assert "obs-a10-slowness" in text
+    assert "A10_service_p95_slow" in text
+    assert "traefik_service_request_duration_seconds_bucket" in text
+    assert "> 2.5" in text
+    assert "for: 10m" in text
+    assert "class: A10" in text
+
+
 def test_prometheus_has_traefik_wg():
     text = (ROOT / "configs" / "vm" / "prometheus.yml").read_text()
     assert "job_name: traefik" in text

@@ -1,6 +1,9 @@
 # vmalert VM rules — Contabo prod (reviewed, dev@ only)
 # Datasource: http://127.0.0.1:8428 (main VM). Notifier: Alertmanager :9093.
-# Each rule maps to tests/README.md repository IDs A1-A6. A7 lives in rules-vl.yml.
+# Each rule maps to tests/README.md repository IDs A1-A6 + A10 (f5d8e22b AC3).
+# A7 lives in rules-vl.yml. A11 (probe TTFB) is covered by
+# coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds lives only
+# in latency VM :8429, not in this vmalert's :8428 datasource).
 # A8 is a routing property (dev-only + retry), proven by every drill's mail.
 # All thresholds are currently OK (no firing); drills make exactly one fire + clear.
 # DECISION t1468u: approved for prod; drills to dev@ only; never mute real prod alerts.
@@ -183,3 +186,16 @@ groups:
     annotations:
       summary: "A6 store scrape down"
       description: "VM/VL scrape down. Full store outage uses external dead-man (healthcheck), not in-band vmalert alone."
+
+- name: obs-a10-slowness
+  interval: 30s
+  rules:
+  - alert: A10_service_p95_slow
+    expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
+    for: 10m
+    labels:
+      severity: critical
+      class: A10
+    annotations:
+      summary: "A10 service p95 response time > 2.5s for 10m (f5d8e22b AC3)"
+      description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428 (traefik buckets scraped there too). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts, the sole writers of probe_ttfb_seconds (latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
