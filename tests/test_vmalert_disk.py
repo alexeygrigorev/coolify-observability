@@ -86,6 +86,22 @@ def test_disk_legacy_guards_kept():
     assert "A2_disk_canary" in alerts
 
 
+def test_prometheus_has_hetzner_tunnel_target():
+    text = (ROOT / "configs" / "vm" / "prometheus.yml").read_text()
+    assert '127.0.0.1:9102' in text
+    assert "host: hetzner" in text
+
+
+def test_dev_env_alerts_route_dev_only():
+    # A10_dev carries env=dev; AM template routes env="dev" to dev-only so
+    # dev-environment signals never page prod (S2 review finding).
+    rule = _alerts()["A10_dev_service_p95_slow"][0][1]
+    assert rule["labels"].get("env") == "dev"
+    data = yaml.safe_load(AM_TMPL.read_text())
+    env_routes = [c for c in data["route"]["routes"] if 'env="dev"' in c["matchers"]]
+    assert len(env_routes) == 1 and env_routes[0]["receiver"] == "dev-only"
+
+
 def test_canary_rules_carry_drill_label():
     for canary in ("A2_disk_canary", "A3_canary_oom", "A5_canary_missing"):
         _, rule = _alerts()[canary][0]
@@ -106,7 +122,7 @@ def test_routing_real_to_prod_drills_to_dev():
     assert child == {"dev-only"}
     matchers = [m for c in route["routes"] for m in c["matchers"]]
     assert any('drill="true"' in m for m in matchers)
-    assert any('.*_canary' in m for m in matchers)
+    assert any('canary' in m for m in matchers)
     dev = receivers["dev-only"]
     assert [e["to"] for e in dev["email_configs"]] == ["dev@dtcdev.click"]
     # AC5: RESOLVED mails enabled on every email receiver.

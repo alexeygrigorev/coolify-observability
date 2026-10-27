@@ -277,6 +277,7 @@ groups:
       )
     for: 10m
     labels:
+      env: dev
       severity: warning
       class: A10
     annotations:

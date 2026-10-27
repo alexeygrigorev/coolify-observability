@@ -28,10 +28,15 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
-  # t1493u AC3: drill alerts never page prod. drill=true label or *_canary name.
+  # t1493u AC3: drill alerts never page prod. drill=true label or *canary* name
+  # (covers A2_disk_canary, A3_canary_oom, A5_canary_missing).
   - matchers: [ 'drill="true"' ]
     receiver: 'dev-only'
-  - matchers: [ 'alertname=~".*_canary"' ]
+  - matchers: [ 'alertname=~".*canary.*"' ]
+    receiver: 'dev-only'
+  # Dev-environment signals (e.g. A10_dev_service_p95_slow, whose committed
+  # intent is 'visible via dev-only mail') never page prod either.
+  - matchers: [ 'env="dev"' ]
     receiver: 'dev-only'
 
 receivers:
