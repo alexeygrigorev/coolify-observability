@@ -8,6 +8,10 @@
 -- Labels: client (campaigns.client_id → clients.slug), status. No PII.
 -- Returns: (day DATE, dims JSONB, value NUMERIC).
 -- Bind params: %(start)s (inclusive timestamptz), %(end)s (exclusive timestamptz).
+-- Expected-empty: while campaign_recipients has zero rows this returns no
+-- rows and pushes no series; it resumes automatically once qualifying
+-- non-pending recipients fall inside the collected UTC day interval
+-- (developer decision 2026-10-26, intake d9d8bd81).
 
 SELECT
     s.day AS day,

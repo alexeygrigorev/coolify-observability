@@ -368,6 +368,25 @@ def test_campaign_sql_live_day_rules(pg):
     assert not any("pending" in d for _, d in got)
 
 
+def test_campaign_sql_expected_empty_until_recipients_exist(pg):
+    # Developer decision 2026-10-26 (intake d9d8bd81): with a zero-row
+    # campaign_recipients source the metric is expected-empty — no stored
+    # rows and no VM series — and must start producing the series again
+    # automatically, with no collector change, on the next collection
+    # covering a UTC day with qualifying non-pending recipients.
+    _exec(pg, RELAY_FIXTURES)
+    _exec(pg, "TRUNCATE campaign_recipients")
+    empty = _exec(pg, _read("relay_campaign_recipients.sql"),
+                  {"start": "2026-10-20", "end": "2026-10-22"})
+    assert empty == []
+    _exec(pg, """INSERT INTO campaign_recipients
+        (campaign_id, status, sent_at, updated_at) VALUES
+        (10, 'sent', '2026-10-20T18:01:00+00', '2026-10-20T18:01:00+00')""")
+    got = _rows_by_day_dims(_exec(pg, _read("relay_campaign_recipients.sql"),
+                                  {"start": "2026-10-20", "end": "2026-10-22"}))
+    assert got == {("2026-10-20", _dims(client="cmp", status="sent")): 1.0}
+
+
 def test_bounce_rate_sql_live(pg):
     _exec(pg, RELAY_FIXTURES)
     got = _rows_by_day_dims(_exec(pg, _read("relay_bounce_rate.sql"),
