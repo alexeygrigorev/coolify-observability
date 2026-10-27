@@ -28,6 +28,55 @@ def test_native_vmalert_has_a10():
     assert "class: A10" in text
 
 
+def test_a10_dev_split_and_traffic_floor():
+    """t181f4832: dev services downgraded to warning, both rules need a
+    real-traffic floor so a handful of slow requests cannot page."""
+    import yaml
+
+    raw = (ROOT / "configs" / "vmalert" / "rules-vm.yml").read_text()
+    assert 'service!~".*dev.*"' in raw
+    assert 'service=~".*dev.*"' in raw
+    assert ">= 0.05" in raw
+    assert "traefik_service_requests_total" in raw
+    assert "A10_dev_service_p95_slow" in raw
+
+    rules = yaml.safe_load(raw)
+    group = next(g for g in rules["groups"] if g["name"] == "obs-a10-slowness")
+    by_name = {r["alert"]: r for r in group["rules"]}
+    assert set(by_name) == {"A10_service_p95_slow", "A10_dev_service_p95_slow"}
+    crit, dev = by_name["A10_service_p95_slow"], by_name["A10_dev_service_p95_slow"]
+    assert crit["labels"] == {"severity": "critical", "class": "A10"}
+    assert dev["labels"] == {"severity": "warning", "class": "A10"}
+    assert crit["for"] == dev["for"] == "10m"
+    # prod rule still gated on both legs: slow p95 AND traffic floor
+    assert 'service!~".*dev.*"' in crit["expr"] and ">= 0.05" in crit["expr"]
+    # dev rule never matches the critical rule's service set
+    assert 'service=~".*dev.*"' in dev["expr"] and ">= 0.05" in dev["expr"]
+    # declarative documentation mirrors the split
+    decl = (ROOT / "alerts" / "rules.yaml").read_text()
+    assert "A10_dev_service_p95_slow" in decl
+    assert 'service=~".*dev.*"' in decl
+
+
+def test_a10_semantic_unittest_fixture():
+    """vmalert-tool unittest: run with
+    `vmalert-tool unittest --files tests/fixtures/a10-unittest.yml`
+    (engine version matches prod vmalert v1.115.0)."""
+    fix = ROOT / "tests" / "fixtures" / "a10-unittest.yml"
+    assert fix.exists()
+    ftext = fix.read_text()
+    assert "../../configs/vmalert/rules-vm.yml" in ftext
+    # every scenario the rule split must distinguish
+    for service in (
+        "web-prod@docker",      # slow + busy -> critical fires
+        "web-sandbox@docker",   # slow + trickle -> floor blocks
+        "aisl-dev-source-web@file",  # slow + busy -> warning; + trickle -> quiet
+        "web-fast@docker",      # fast + busy -> quiet
+    ):
+        assert service in ftext
+    assert "groupname: obs-a10-slowness" in ftext
+
+
 def test_prometheus_has_traefik_wg():
     text = (ROOT / "configs" / "vm" / "prometheus.yml").read_text()
     assert "job_name: traefik" in text

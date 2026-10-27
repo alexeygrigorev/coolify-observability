@@ -1,0 +1,155 @@
+# t181f4832 — semantic unittests for the obs-a10-slowness group.
+# Run: vmalert-tool unittest --files tests/fixtures/a10-unittest.yml
+# (or promtool test rules --files=...). Same engine version as prod vmalert.
+#
+# Series model: "requests" counters grow per 30s tick.
+#   fast   = all observations inside le=0.1           (p95 ~0.095s)
+#   slow   = all observations inside (1.2,5]          (p95 ~4.81s > 2.5)
+#   busy   = 6 req / 30s   = 0.20 req/s  (>= 0.05 floor)
+#   trickle= 0.3 req / 30s = 0.01 req/s  (<  0.05 floor — the 2026-10-27
+#   aisl-dev page shape: one slow client download per 5m on ~0.02 req/s)
+rule_files:
+  - ../../configs/vmalert/rules-vm.yml
+
+evaluation_interval: 30s
+
+tests:
+  # Case 1: prod-like service, slow p95, real traffic -> critical fires.
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="web-prod@docker",instance="10.100.0.1:8082"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-prod@docker",instance="10.100.0.1:8082",le="0.1"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-prod@docker",instance="10.100.0.1:8082",le="0.3"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-prod@docker",instance="10.100.0.1:8082",le="1.2"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-prod@docker",instance="10.100.0.1:8082",le="5"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-prod@docker",instance="10.100.0.1:8082",le="+Inf"}'
+        values: '0+6x120'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts:
+          - exp_labels:
+              service: web-prod@docker
+              severity: critical
+              class: A10
+            exp_annotations:
+              summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
+              description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_dev_service_p95_slow
+        exp_alerts: []
+
+  # Case 2: prod-like service, slow p95, trickle traffic -> floor blocks paging.
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="web-sandbox@docker",instance="10.100.0.1:8082"}'
+        values: '0+0.3x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-sandbox@docker",instance="10.100.0.1:8082",le="0.1"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-sandbox@docker",instance="10.100.0.1:8082",le="0.3"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-sandbox@docker",instance="10.100.0.1:8082",le="1.2"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-sandbox@docker",instance="10.100.0.1:8082",le="5"}'
+        values: '0+0.3x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-sandbox@docker",instance="10.100.0.1:8082",le="+Inf"}'
+        values: '0+0.3x120'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts: []
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_dev_service_p95_slow
+        exp_alerts: []
+
+  # Case 3: dev service, slow p95, real traffic -> warning fires, critical must NOT.
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="aisl-dev-source-web@file",instance="10.100.0.2:8082"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="0.1"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="0.3"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="1.2"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="5"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="+Inf"}'
+        values: '0+6x120'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_dev_service_p95_slow
+        exp_alerts:
+          - exp_labels:
+              service: aisl-dev-source-web@file
+              severity: warning
+              class: A10
+            exp_annotations:
+              summary: "A10 dev service p95 response time > 2.5s for 10m (warning, not a page)"
+              description: "Same 2.5s/10m threshold and >= 0.05 req/s traffic floor as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail with RECOVERED. Recovers when p95 <= 2.5s or traffic drops below the floor."
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts: []
+
+  # Case 4: the 2026-10-27 incident shape — dev service, slow p95, trickle.
+  # A handful of slow requests must not alert at all (this is what paged).
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="aisl-dev-source-web@file",instance="10.100.0.2:8082"}'
+        values: '0+0.3x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="0.1"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="0.3"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="1.2"}'
+        values: '0+0x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="5"}'
+        values: '0+0.3x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="aisl-dev-source-web@file",instance="10.100.0.2:8082",le="+Inf"}'
+        values: '0+0.3x120'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts: []
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_dev_service_p95_slow
+        exp_alerts: []
+
+  # Case 5: prod-like service, fast p95, real traffic -> quiet (no regression).
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="web-fast@docker",instance="10.100.0.1:8082"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-fast@docker",instance="10.100.0.1:8082",le="0.1"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-fast@docker",instance="10.100.0.1:8082",le="0.3"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-fast@docker",instance="10.100.0.1:8082",le="1.2"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-fast@docker",instance="10.100.0.1:8082",le="5"}'
+        values: '0+6x120'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-fast@docker",instance="10.100.0.1:8082",le="+Inf"}'
+        values: '0+6x120'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts: []
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_dev_service_p95_slow
+        exp_alerts: []

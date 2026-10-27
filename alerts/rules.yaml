@@ -44,12 +44,44 @@ rules:
   # (group obs-a10-slowness, datasource main VM :8428 which also scrapes the
   # traefik buckets; clears at <=2.5s; alertmanager send_resolved=true).
   # A11 stays script-enforced (probe_ttfb_seconds exists only on :8429).
+  # t181f4832 (2026-10-27): dev split + traffic floor after the first real
+  # page (aisl-dev-source-web@file, ~0.02 req/s, one slow-client download per
+  # 5m pinned p95 at the top bucket while app handling stayed <100ms):
+  #   * A10_service_p95_slow (critical) = prod-like services only
+  #     (service!~".*dev.*") AND rate >= 0.05 req/s over 10m;
+  #   * A10_dev_service_p95_slow (warning) = dev/sandbox services, same gate.
   - id: A10_service_p95_slow
     type: promql
-    expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
+    expr: |
+      (
+        histogram_quantile(0.95, sum by (service, le) (
+          rate(traefik_service_request_duration_seconds_bucket{service!~".*dev.*"}[5m])
+        )) > 2.5
+      )
+      and on (service)
+      (
+        sum by (service) (rate(traefik_service_requests_total{service!~".*dev.*"}[10m])) >= 0.05
+      )
     for: 10m
     severity: critical
     recover_expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) < 2.0
+    notify_to: dev@dtcdev.click
+    notify_from: alerts@dtcdev.click
+    repeat_min: 60
+  - id: A10_dev_service_p95_slow
+    type: promql
+    expr: |
+      (
+        histogram_quantile(0.95, sum by (service, le) (
+          rate(traefik_service_request_duration_seconds_bucket{service=~".*dev.*"}[5m])
+        )) > 2.5
+      )
+      and on (service)
+      (
+        sum by (service) (rate(traefik_service_requests_total{service=~".*dev.*"}[10m])) >= 0.05
+      )
+    for: 10m
+    severity: warning
     notify_to: dev@dtcdev.click
     notify_from: alerts@dtcdev.click
     repeat_min: 60

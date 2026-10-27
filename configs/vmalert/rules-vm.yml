@@ -190,12 +190,54 @@ groups:
 - name: obs-a10-slowness
   interval: 30s
   rules:
+  # t181f4832 (2026-10-27): first real A10 page was aisl-dev-source-web@file —
+  # a dev service at ~0.02 req/s where ONE slow-client download per 5m window
+  # pinned p95 at the 5s top bucket (every app-side handling was <100ms; pages
+  # are ~90-150KB uncompressed, so a slow client link stretches the Traefik
+  # end-to-end duration, not the app). Split + gated:
+  #   * A10_service_p95_slow (critical) — prod-like services only
+  #     (service!~".*dev.*"; live :8428 label set has no prod service matching),
+  #     AND a real-traffic floor >= 0.05 req/s over 10m (~30 req) so a handful
+  #     of slow requests on a low-traffic service cannot page.
+  #   * A10_dev_service_p95_slow (warning) — dev/sandbox services, same
+  #     threshold + floor; visible via dev-only mail but never critical.
+  # Prod coverage: 2.5s threshold and for: 10m unchanged. The rate-independent
+  # user-facing leg stays A11 probe TTFB (coolify-healthcheck/contabo-deadman,
+  # probe_ttfb_seconds on latency VM :8429). RECOVERED + dev-only mail routing
+  # unchanged (alertmanager send_resolved=true).
   - alert: A10_service_p95_slow
-    expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 2.5
+    expr: |
+      (
+        histogram_quantile(0.95, sum by (service, le) (
+          rate(traefik_service_request_duration_seconds_bucket{service!~".*dev.*"}[5m])
+        )) > 2.5
+      )
+      and on (service)
+      (
+        sum by (service) (rate(traefik_service_requests_total{service!~".*dev.*"}[10m])) >= 0.05
+      )
     for: 10m
     labels:
       severity: critical
       class: A10
     annotations:
-      summary: "A10 service p95 response time > 2.5s for 10m (f5d8e22b AC3)"
-      description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428 (traefik buckets scraped there too). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts, the sole writers of probe_ttfb_seconds (latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+      summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
+      description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+  - alert: A10_dev_service_p95_slow
+    expr: |
+      (
+        histogram_quantile(0.95, sum by (service, le) (
+          rate(traefik_service_request_duration_seconds_bucket{service=~".*dev.*"}[5m])
+        )) > 2.5
+      )
+      and on (service)
+      (
+        sum by (service) (rate(traefik_service_requests_total{service=~".*dev.*"}[10m])) >= 0.05
+      )
+    for: 10m
+    labels:
+      severity: warning
+      class: A10
+    annotations:
+      summary: "A10 dev service p95 response time > 2.5s for 10m (warning, not a page)"
+      description: "Same 2.5s/10m threshold and >= 0.05 req/s traffic floor as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail with RECOVERED. Recovers when p95 <= 2.5s or traffic drops below the floor."
