@@ -23,6 +23,12 @@ scrape_configs:
       # .163: Vector host_metrics also; optional local node if present
       - targets: ["10.100.0.1:9100"]
         labels: { host: contabo-a, role: apps }
+      # t1493u AC2: hetzner node_exporter over an SSH tunnel terminated on
+      # contabo-a (obs-hetzner-node-tunnel.service binds 127.0.0.1:9102 ->
+      # hetzner 127.0.0.1:9100, restricted key, never a public unauth port).
+      # 9102 not 9101: 9101 is contabo-a's own cadvisor.
+      - targets: ["127.0.0.1:9102"]
+        labels: { host: hetzner }
 
   - job_name: cadvisor
     static_configs:

@@ -1,8 +1,10 @@
-# Alertmanager prod config TEMPLATE — dev@ only (t1468u DECISION).
+# Alertmanager prod config TEMPLATE — t1493u AC3 routing.
 # NEVER commit real SMTP credentials. Installer on contabo-a injects them
 # from /etc/msmtprc (root 600) into /data/obs/alertmanager/alertmanager.yml (600).
 # Placeholders below are replaced on-host; this file is safe to commit review.
-# Real prod alerts are never muted; drills go to dev@ only (never alexey@).
+# Real (non-drill) alerts -> prod-real receiver: alexey@datatalks.club + dev@.
+# Drills (drill=true label or *_canary alertname) -> dev-only: dev@dtcdev.click.
+# No real prod alert is muted. send_resolved: true on every email_config (AC5).
 
 global:
   resolve_timeout: 5m
@@ -19,13 +21,49 @@ global:
   smtp_require_tls: true
 
 route:
-  receiver: 'dev-only'
+  # Default = real alerts (drills fall through to the child routes below).
+  receiver: 'prod-real'
   group_by: ['alertname', 'class']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+  # t1493u AC3: drill alerts never page prod. drill=true label or *_canary name.
+  - matchers: [ 'drill="true"' ]
+    receiver: 'dev-only'
+  - matchers: [ 'alertname=~".*_canary"' ]
+    receiver: 'dev-only'
 
 receivers:
+- name: 'prod-real'
+  email_configs:
+  - to: 'alexey@datatalks.club'
+    send_resolved: true
+    headers:
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+    html: |
+      {{ range .Alerts }}
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      {{ .Annotations.summary }}<br>
+      {{ .Annotations.description }}<br>
+      {{ end }}
+    text: |
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ end }}
+  - to: 'dev@dtcdev.click'
+    send_resolved: true
+    headers:
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+    html: |
+      {{ range .Alerts }}
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      {{ .Annotations.summary }}<br>
+      {{ .Annotations.description }}<br>
+      {{ end }}
+    text: |
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ end }}
+
 - name: 'dev-only'
   email_configs:
   - to: 'dev@dtcdev.click'
