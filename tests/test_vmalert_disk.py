@@ -93,13 +93,13 @@ def test_prometheus_has_hetzner_tunnel_target():
 
 
 def test_dev_env_alerts_route_dev_only():
-    # A10_dev carries env=dev; AM template routes env="dev" to dev-only so
-    # dev-environment signals never page prod (S2 review finding).
-    rule = _alerts()["A10_dev_service_p95_slow"][0][1]
-    assert rule["labels"].get("env") == "dev"
+    # A10_dev_service_p95_slow commits to 'visible via dev-only mail'
+    # (t181f4832); AM routes it by alertname so dev signals never page prod
+    # while its rule labels stay untouched for that intake's tests.
     data = yaml.safe_load(AM_TMPL.read_text())
-    env_routes = [c for c in data["route"]["routes"] if 'env="dev"' in c["matchers"]]
-    assert len(env_routes) == 1 and env_routes[0]["receiver"] == "dev-only"
+    dev_routes = [c for c in data["route"]["routes"]
+                  if 'alertname="A10_dev_service_p95_slow"' in c["matchers"]]
+    assert len(dev_routes) == 1 and dev_routes[0]["receiver"] == "dev-only"
 
 
 def test_canary_rules_carry_drill_label():

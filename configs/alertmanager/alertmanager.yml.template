@@ -34,9 +34,10 @@ route:
     receiver: 'dev-only'
   - matchers: [ 'alertname=~".*canary.*"' ]
     receiver: 'dev-only'
-  # Dev-environment signals (e.g. A10_dev_service_p95_slow, whose committed
-  # intent is 'visible via dev-only mail') never page prod either.
-  - matchers: [ 'env="dev"' ]
+  # Dev-environment signals never page prod either: A10_dev_service_p95_slow
+  # commits to 'visible via dev-only mail' (t181f4832), so it is routed by
+  # alertname here (its rule labels stay untouched for that intake's tests).
+  - matchers: [ 'alertname="A10_dev_service_p95_slow"' ]
     receiver: 'dev-only'
 
 receivers:
