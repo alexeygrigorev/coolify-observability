@@ -4,17 +4,20 @@
 
 | Tier | What | How long |
 |------|------|----------|
-| Hot (Contabo NVMe) | VM + VL local | **`-retentionPeriod=2d`** (~24–48h; yesterday stays queryable in vmui) |
+| Hot (Contabo NVMe) | VM local | **`-retentionPeriod=2d`** (~24–48h; yesterday stays queryable in vmui) |
+| Hot (Contabo NVMe) | VL local | **`-retentionPeriod=14d`** (bfd84d52: retry window for failed log archives) |
 | Warm (S3) | Closed day export | **14 days** lifecycle on `coolify/obs/` |
 | Gone | After S3 expiry | Delete |
 
-Daily job on **contabo-a** (`.163`): export **day-before-yesterday** (Europe/Berlin) → gzip → S3 → `head-object` verify. Local aged data drops via VM/VL retention (do **not** `rm` live VL partitions on v1.15.0 — no detach API).
+Daily job on **contabo-a** (`.163`): export **day-before-yesterday** (Europe/Berlin) → gzip → S3 → `head-object` verify. Logs are exported in 1h windows (`VL_WINDOW_SECONDS`), each retried and accepted only when its row count matches `stats count()` for the window; a whole-day query exceeds `-search.maxQueryDuration` and is cut mid-stream (curl 56, Oct 24–27 2026). Any failure posts `ObsArchiveFailed` to Alertmanager (`127.0.0.1:9093`) in the same run; success resolves it. Local aged data drops via VM/VL retention (do **not** `rm` live VL partitions on v1.15.0 — no detach API).
 
 ## S3 layout
 
 ```
 s3://dtc-coolify-backups-387546586013/coolify/obs/metrics/YYYY/MM/DD/metrics-<day>-<stamp>.ndjson.gz
 s3://dtc-coolify-backups-387546586013/coolify/obs/logs/YYYY/MM/DD/logs-<day>-<stamp>.ndjson.gz
+s3://dtc-coolify-backups-387546586013/coolify/obs/logs/YYYY/MM/DD/logs-<day>-<stamp>.manifest.ndjson   # per-window rows
+s3://dtc-coolify-backups-387546586013/coolify/obs/logs-partial/YYYY/MM/DD/logs-<day>-PARTIAL-curl56-<stamp>.ndjson.gz  # Oct 24–27 2026 only, incomplete
 ```
 
 Same bucket + IAM user as Coolify Postgres dumps (`coolify-s3-backup-writer`, prefix `coolify/*`).
@@ -23,7 +26,13 @@ Same bucket + IAM user as Coolify Postgres dumps (`coolify-s3-backup-writer`, pr
 
 `00:15` Europe/Berlin via `/etc/cron.d/coolify-obs-archive` → `/usr/local/sbin/coolify-obs-archive.sh`.
 
-Early morning keeps nearly the full D-2 window inside a 2d retention before GC.
+Early morning keeps nearly the full D-2 window inside VM's 2d retention before GC.
+
+Backfill / retry one day (logs only when metrics already landed):
+
+```bash
+ssh contabo-a 'sudo TARGET_DAY=2026-10-27 KINDS=logs /usr/local/sbin/coolify-obs-archive.sh'
+```
 
 ## Inspect an archived day
 
@@ -38,7 +47,7 @@ Metrics are VictoriaMetrics `/api/v1/export` JSON lines; logs are VictoriaLogs L
 
 | Path | Role |
 |------|------|
-| `docker-compose.prod.yml` | `-retentionPeriod=2d` on VM + VL |
+| `docker-compose.prod.yml` | `-retentionPeriod=2d` VM, `14d` VL |
 | `scripts/obs-day-archive.sh` | export → S3 → verify |
 | `scripts/coolify-obs-archive.cron` | cron.d fragment |
 | `scripts/coolify-obs-archive.env.example` | `/etc/coolify-obs-archive.env` placeholders |

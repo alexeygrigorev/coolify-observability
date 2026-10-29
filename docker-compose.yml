@@ -29,9 +29,12 @@ services:
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-logs-data
-      - -retentionPeriod=2d
+      # bfd84d52: 14d (was 2d) so a failed daily S3 archive can be retried
+      # before the day ages out; partitions are ~40-70MB/day.
+      - -retentionPeriod=14d
       - -memory.allowedBytes=134217728
       - -httpListenAddr=:9428
+      - -search.maxQueryDuration=120s
     volumes:
       - /data/obs/vl:/victoria-logs-data
     network_mode: host

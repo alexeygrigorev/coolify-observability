@@ -115,7 +115,7 @@ a Coolify deployment.
 
 | Tier | Policy |
 |------|--------|
-| Hot local | VM + VL **`-retentionPeriod=2d`** (yesterday stays in vmui) |
+| Hot local | VM **`-retentionPeriod=2d`** (yesterday stays in vmui), VL **`14d`** |
 | Daily archive | day-before-yesterday → gzip → `s3://…/coolify/obs/{metrics,logs}/YYYY/MM/DD/` |
 | S3 | lifecycle **14 days** on `coolify/obs/` |
 
