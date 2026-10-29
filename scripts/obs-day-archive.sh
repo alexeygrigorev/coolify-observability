@@ -52,18 +52,20 @@ ALERT_HOLD_SECONDS="${ALERT_HOLD_SECONDS:-93600}"
 
 # --- same-run alerting (fires on any non-zero exit, resolves on success) ---
 alert() {
-  local state="$1" summary="$2" ends
+  local state="$1" summary="$2" ends now
   [[ -n "$ALERTMANAGER_URL" ]] || return 0
+  # explicit startsAt: without it Alertmanager copies endsAt (a future time)
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   if [[ "$state" == "firing" ]]; then
     ends="$(date -u -d "@$(( $(date +%s) + ALERT_HOLD_SECONDS ))" '+%Y-%m-%dT%H:%M:%SZ')"
   else
-    ends="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    ends="$now"
   fi
   local labels
   labels="$(jq -cn --arg drill "$ALERT_DRILL" '{alertname:"ObsArchiveFailed",class:"backup",severity:"critical",host:"contabo-a",job:"coolify-obs-archive"} + (if $drill == "1" then {drill:"true"} else {} end)')"
-  jq -cn --argjson labels "$labels" --arg summary "$summary" --arg ends "$ends" \
+  jq -cn --argjson labels "$labels" --arg summary "$summary" --arg ends "$ends" --arg starts "$now" \
     --arg desc "/usr/local/sbin/coolify-obs-archive.sh target_day=${TARGET_DAY:-?}; see /var/log/coolify-obs-archive.log on contabo-a" \
-    '[{labels:$labels, annotations:{summary:$summary, description:$desc}, endsAt:$ends}]' \
+    '[{labels:$labels, annotations:{summary:$summary, description:$desc}, startsAt:$starts, endsAt:$ends}]' \
     | curl -fsS -m 10 -X POST -H 'Content-Type: application/json' --data-binary @- \
         "${ALERTMANAGER_URL}/api/v2/alerts" >/dev/null \
     && log "alertmanager ${state}: ${summary}" \
