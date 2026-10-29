@@ -11,6 +11,13 @@ Read-only SSH inspection of contabo-a at **2026-10-29 14:07 UTC** found:
 - Installed archive script passes `bash -n`.
 - Alertmanager `/api/v2/alerts` contains no `ObsArchiveFailed` alert.
 
+Local validation: both archive and installer pass `bash -n`; `git diff --check`
+passes. Running the archive script with a clean environment, a nonexistent
+`COOLIFY_OBS_ARCHIVE_ENV_FILE`, and alert delivery disabled exits **1** and emits
+`S3_BUCKET is not set` before any export/upload or temporary work is created.
+Thus the existing archive monitor fails loudly for the reported missing-env
+case. The installer itself still creates placeholders and continues.
+
 The existing host archive log records:
 
 | Berlin timestamp | Evidence |
@@ -39,8 +46,8 @@ configuration failure.
   keys without explicit approval for this exact job. No AWS credentials were used.
 - AC3: observe the next scheduled run at **2026-10-30 00:15 Europe/Berlin**
   (**2026-10-29 23:15 UTC**), including completion status and alert state.
-  The installer currently creates a placeholder env and continues; a fail-fast
-  configuration check still needs implementation and validation.
+  The fail-loud half of AC3 is covered by the missing-env validation above and
+  the historical same-run failure alerts; scheduled success remains pending.
 - Independent review requested from the existing archive sessions; pending.
 
 No production files or credentials were changed during this inspection.
