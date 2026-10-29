@@ -13,8 +13,14 @@ Read-only SSH inspection of contabo-a at **2026-10-29 14:07 UTC** found:
 
 Local validation: both archive and installer pass `bash -n`; `git diff --check`
 passes. Running the archive script with a clean environment, a nonexistent
-`COOLIFY_OBS_ARCHIVE_ENV_FILE`, and alert delivery disabled exits **1** and emits
-`S3_BUCKET is not set` before any export/upload or temporary work is created.
+`COOLIFY_OBS_ARCHIVE_ENV_FILE`, and a stubbed `curl` exits **1** and emits
+`S3_BUCKET is not set` before any export/upload work is created. The stub
+captures an `ObsArchiveFailed` POST payload containing that diagnostic without
+making any network request. This isolated check passed on October 29 at
+15:44 UTC. The original test incorrectly treated an empty `ALERTMANAGER_URL`
+as disabling delivery; `${ALERTMANAGER_URL:-...}` actually selects localhost.
+The original test therefore attempted local alert delivery; its isolation
+claim is superseded by this stubbed check.
 Thus the existing archive monitor fails loudly for the reported missing-env
 case. The installer itself still creates placeholders and continues.
 
@@ -54,5 +60,11 @@ configuration failure.
   host read agrees with the timestamps and manual/drill distinction; it found
   no unsupported S3 proof claim and confirmed that scheduled success and
   credential identity remain pending.
+- A second independent reviewer, session
+  `hub-bdb18e47-ed6c-4627-8727-c3dbc3d0d729`, confirmed the env metadata, drill
+  markers and absence of `ObsArchiveFailed` in a fresh host read (message
+  `01a18821-ff96-70c2-8068-214484a2a5d8`). It identified the original test's
+  alert-disable error, corrected above. Unrelated Alertmanager alerts exist;
+  all clear-state claims here concern only `ObsArchiveFailed`.
 
 No production files or credentials were changed during this inspection.
