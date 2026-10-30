@@ -29,23 +29,33 @@ Latency store: `victoria-metrics-latency` on `.163` `:8429`
 node/cadvisor series would OOM at 30d under 256Mi). Probes:
 `coolify-healthcheck` (Contabo) + `contabo-deadman` (Hetzner, via SSH)
 record `probe_ttfb_seconds` / `probe_total_seconds` per URL for CMP home +
-course, AISHL home + content, Relay /health, website home + /events/past.
+course, AISHL home + content, Relay /health, website home + /events/past, and
+(since 2026-10-30, f5d8e22b AC1) the AWS-hosted services hub/ops/dapier —
+they never pass through the Contabo Traefik proxies, so probes are their only
+per-service latency source. Fleet dedup per t1634u/6e626719: env overrides
+trim duplicate CMP probes on Contabo (hetzner 9, contabo-a 5, contabo-b 6);
+all seven AC2 URLs stay covered across the fleet.
 
 One PromQL p95 per service (30d, latency VM `:8429/vmui`):
 
 ```promql
-# Traefik per-service p95 (CMP, AISHL, Relay, website, ops, hub, dapier via service/router labels)
+# AC1 one-query p95 per service (all seven: cmp, aisl, relay, website, hub, ops, dapier; 30d)
+max by (service) (quantile_over_time(0.95, probe_ttfb_seconds[30d]))
+# Traefik per-service p95 (Contabo-fronted services, live)
 histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m])))
-# Probe TTFB p95 per service (explicit service label, 30d)
-max by (service) (quantile_over_time(0.95, probe_ttfb_seconds[1h]))
 # Raw probe series (pushed): max TTFB by probe/service
 max by (probe, service) (probe_ttfb_seconds)
 ```
 
 Slowness alert (AC3): service p95 > 2.5s OR probe TTFB > 3s for >=10m
 → mail ONLY `dev@dtcdev.click` from `alerts@dtcdev.click`, RECOVERED,
-max 1/hour, hysteresis (recover <2.0s / <2.5s). See `alerts/rules.yaml`
-A10/A11. Drill: injected-delay like A1-A8, ops-only, never mutes prod.
+max 1/hour, hysteresis (recover <2.0s / <2.5s). Probe leg: monitor scripts.
+Traefik p95 leg: native `obs-a10-slowness` vmalert rules with the same 2.0s
+recovery hysteresis (ALERTS-based or-branch), routed by the alertmanager
+`class="A10"` route to the `slowness-dev` receiver (dev@ only, per-config
+`from alerts@dtcdev.click` via its own SES account, `send_resolved: true`).
+Drills keep route precedence. See `alerts/rules.yaml` A10/A11.
+Drill: injected-delay like A1-A8, ops-only, never mutes prod.
 
 AWS ALB history (AC5, read + S3 put only, profile `main-temp`, eu-west-1):
 
