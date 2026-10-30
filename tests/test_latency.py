@@ -144,6 +144,14 @@ def test_a10_ac3_dev_only_route_and_hysteresis():
     prod_tos = [e["to"] for e in recv["prod-real"]["email_configs"]]
     assert "dev@dtcdev.click" in prod_tos and "alexey@datatalks.club" in prod_tos
     assert cfg["global"]["smtp_from"] == "noreply@datatalks.club"
+    # remaining warnings stay dev-only (t1885u), below the A10 route so the dev
+    # p95 warning keeps its alerts@ sender
+    warn_routes = [r for r in routes if 'severity="warning"' in str(r.get("matchers", []))]
+    assert len(warn_routes) == 1 and warn_routes[0]["receiver"] == "dev-only"
+    assert routes.index(a10_routes[0]) < routes.index(warn_routes[0])
+    # alexey prod-real leg carries no RECOVERED mail (t1885u, deployed)
+    alexey_leg = next(e for e in recv["prod-real"]["email_configs"] if e["to"] == "alexey@datatalks.club")
+    assert alexey_leg["send_resolved"] is False
 
     raw = (ROOT / "configs" / "vmalert" / "rules-vm.yml").read_text()
     rules = yaml.safe_load(raw)
