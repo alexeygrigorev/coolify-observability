@@ -63,14 +63,26 @@ groups:
       summary: "A2 disk space warn (<15% free, all hosts)"
       description: "Filesystem free <15% for 10m on any host/mount (real mounts only). Covers contabo-a, contabo-b and hetzner, all persistent mounts."
   - alert: A2_disk_crit
-    expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} < 0.08
-    for: 5m
+    expr: |
+      (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} < 0.08)
+      or
+      (ALERTS{alertname="A2_disk_crit", alertstate="firing"} == 1 and node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} < 0.10)
+    for: 10m
     labels:
       severity: critical
       class: A2
     annotations:
-      summary: "A2 disk space crit (<8% free, all hosts)"
-      description: "Filesystem free <8% for 5m on any host/mount (real mounts only). Immediate action; routes to prod receiver."
+      summary: "A2 disk space crit (<8% free with 10% hysteresis, all hosts)"
+      description: "Filesystem free <8% for 10m (recovers >=10% free) on any host/mount (real mounts only). Immediate action; routes to prod receiver."
+  - alert: A2_disk_fill_6h
+    expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"}[6h], 21600) < 0 and node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} < 0.15
+    for: 30m
+    labels:
+      severity: critical
+      class: A2
+    annotations:
+      summary: "A2 disk predicted full within 6h and <15% free (all hosts)"
+      description: "6h trend predicts avail <0 within 6h and free <15% now, 30m sustained. Immediate action; routes to prod receiver."
   - alert: A2_disk_fill_predict
     expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"}[6h], 86400) < 0 and node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"} < 0.4
     for: 30m
