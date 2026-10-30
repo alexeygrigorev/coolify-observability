@@ -6,7 +6,9 @@
 # Drills (drill=true label or *_canary alertname) -> dev-only: dev@dtcdev.click.
 # Slowness (class A10, f5d8e22b AC3) -> slowness-dev ONLY: dev@dtcdev.click
 # from alerts@dtcdev.click (its own SES account) — never prod-real.
-# No real prod alert is muted. send_resolved: true on every email_config (AC5).
+# No real prod alert is muted. send_resolved: true on every email_config that
+# delivers to dev@dtcdev.click (AC5); the alexey@ prod-real leg is false since
+# t1885u/3bf25bda (2026-10-29, deployed) to keep RECOVERED noise off it.
 
 global:
   resolve_timeout: 5m
@@ -44,12 +46,19 @@ route:
   # Drills keep precedence over this route.
   - matchers: [ 'class="A10"' ]
     receiver: 'slowness-dev'
+  # t1885u/3bf25bda (2026-10-29, deployed): remaining warning-severity alerts
+  # never page prod either — dev-only visibility, below the A10 route so the
+  # dev p95 warning keeps its slowness sender.
+  - matchers: [ 'severity="warning"' ]
+    receiver: 'dev-only'
 
 receivers:
 - name: 'prod-real'
   email_configs:
+  # t1885u/3bf25bda (2026-10-29, deployed): no RECOVERED noise to Alexey's
+  # mailbox — send_resolved stays false on this leg only; dev@ leg keeps true.
   - to: 'alexey@datatalks.club'
-    send_resolved: true
+    send_resolved: false
     headers:
       Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
     html: |

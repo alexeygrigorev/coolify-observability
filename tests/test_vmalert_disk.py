@@ -14,16 +14,22 @@ AM_TMPL = ROOT / "configs" / "alertmanager" / "alertmanager.yml.template"
 # NodeExporterAbsent for contabo-a, contabo-b, hetzner.
 REQUIRED_DISK_ALERTS = {
     "A2_disk_warn": ("warning", {"0.15", "fstype"}),
-    "A2_disk_crit": ("critical", {"0.08", "fstype"}),
+    "A2_disk_crit": ("critical", {"0.08", "0.10", "alertstate"}),
     "A2_disk_fill_predict": ("warning", {"predict_linear", "86400", "0.4"}),
     "A2_disk_inodes_warn": ("warning", {"node_filesystem_files_free", "0.1"}),
     "A2_disk_inodes_crit": ("critical", {"node_filesystem_files_free", "0.05"}),
+    "A2_disk_pressure": ("warning", set()),
+    "A2_disk_fill_6h": ("critical", {"predict_linear", "21600", "0.15"}),
 }
 FSTYPE_GUARD = 'fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"'
 EXPECTED_ABSENT_HOSTS = {"contabo-a", "contabo-b", "hetzner"}
-FOR_SECONDS = {"A2_disk_warn": "10m", "A2_disk_crit": "5m",
+# t1885u/3bf25bda (deployed 2026-10-29, reconciled into source 2026-10-30):
+# A2_disk_crit 8%/10% hysteresis for 10m, A2_disk_pressure 2m, A2_disk_fill_6h
+# 30m added alongside the still-present A2_disk_fill_predict 24h horizon.
+FOR_SECONDS = {"A2_disk_warn": "10m", "A2_disk_crit": "10m",
                "A2_disk_fill_predict": "30m", "A2_disk_inodes_warn": "10m",
-               "A2_disk_inodes_crit": "10m"}
+               "A2_disk_inodes_crit": "10m", "A2_disk_pressure": "2m",
+               "A2_disk_fill_6h": "30m"}
 
 
 def _load_vm():
@@ -51,14 +57,21 @@ def test_disk_rules_present_all_hosts():
         assert rule["labels"]["class"] == "A2"
         for needle in needles:
             assert needle in rule["expr"], f"{alert} expr must contain {needle!r}"
-        # all-hosts: no hardcoded host filter on disk exprs; fstype guard excludes ephemeral mounts
+        # all-hosts: no hardcoded host filter on disk exprs; fstype guard excludes
+        # ephemeral mounts (A2_disk_pressure is a root-mountpoint probe by design,
+        # t1885u: mountpoint="/" instead of the fstype guard)
         assert 'host="' not in rule["expr"] and "host:" not in rule["expr"]
-        assert "fstype" in rule["expr"]
+        if alert != "A2_disk_pressure":
+            assert "fstype" in rule["expr"]
         assert rule["for"] == FOR_SECONDS[alert]
 
 
 def test_disk_fstype_guard_matches_intake():
     for alert in REQUIRED_DISK_ALERTS:
+        if alert == "A2_disk_pressure":
+            _, rule = _alerts()[alert][0]
+            assert 'mountpoint="/"' in rule["expr"], "pressure probe is root-only"
+            continue
         _, rule = _alerts()[alert][0]
         assert FSTYPE_GUARD in rule["expr"], f"{alert} must exclude tmpfs|overlay|squashfs|vfat|fuse.*"
 
@@ -131,9 +144,14 @@ def test_routing_real_to_prod_drills_to_dev():
     assert any('canary' in m for m in matchers)
     dev = receivers["dev-only"]
     assert [e["to"] for e in dev["email_configs"]] == ["dev@dtcdev.click"]
-    # AC5: RESOLVED mails enabled on every email receiver.
+    # AC5: RESOLVED mails enabled on every dev@-bound email_config; the
+    # alexey@ prod-real leg is deliberately false (t1885u/3bf25bda, deployed
+    # 2026-10-29) to keep RECOVERED noise off Alexey's mailbox.
     for r in data["receivers"]:
         for e in r["email_configs"]:
-            assert e["send_resolved"] is True, f"{r['name']} must send_resolved"
+            if e["to"] == "dev@dtcdev.click":
+                assert e["send_resolved"] is True, f"{r['name']} dev leg must send_resolved"
+            else:
+                assert e["send_resolved"] is False, f"{r['name']} alexey leg must not send_resolved"
     blob = AM_TMPL.read_text()
     assert "__SMTP_SMARTHOST__" in blob  # placeholders only, secrets injected on-host
