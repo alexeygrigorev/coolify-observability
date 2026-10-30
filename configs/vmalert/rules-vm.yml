@@ -246,16 +246,33 @@ groups:
   # user-facing leg stays A11 probe TTFB (coolify-healthcheck/contabo-deadman,
   # probe_ttfb_seconds on latency VM :8429). RECOVERED + dev-only mail routing
   # unchanged (alertmanager send_resolved=true).
+  # f5d8e22b AC3 hysteresis (2026-10-30): each rule stays FIRING while p95 is
+  # above the 2.0s recovery threshold (or-branch on its own firing ALERTS
+  # series), so flapping around 2.5s cannot thrash FAIL/RECOVERED mail — it
+  # resolves only when p95 falls <= 2.0s (or traffic dies: rate() then has no
+  # buckets, the quantile goes empty and the hysteresis branch drops out).
+  # Mail routes to dev@dtcdev.click ONLY from alerts@dtcdev.click via the
+  # alertmanager `class="A10"` route -> slowness-dev receiver (never prod-real).
   - alert: A10_service_p95_slow
     expr: |
       (
+        (
+          histogram_quantile(0.95, sum by (service, le) (
+            rate(traefik_service_request_duration_seconds_bucket{service!~".*dev.*"}[5m])
+          )) > 2.5
+        )
+        and on (service)
+        (
+          sum by (service) (rate(traefik_service_requests_total{service!~".*dev.*"}[10m])) >= 0.05
+        )
+      )
+      or on (service)
+      (
+        max by (service) (ALERTS{alertname="A10_service_p95_slow", alertstate="firing"} == 1)
+        and on (service)
         histogram_quantile(0.95, sum by (service, le) (
           rate(traefik_service_request_duration_seconds_bucket{service!~".*dev.*"}[5m])
-        )) > 2.5
-      )
-      and on (service)
-      (
-        sum by (service) (rate(traefik_service_requests_total{service!~".*dev.*"}[10m])) >= 0.05
+        )) > 2.0
       )
     for: 10m
     labels:
@@ -263,17 +280,27 @@ groups:
       class: A10
     annotations:
       summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
-      description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+      description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Hysteresis: stays firing while p95 > 2.0s, resolves (RECOVERED) at <= 2.0s. Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only from alerts@dtcdev.click via the alertmanager class=A10 slowness route (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
   - alert: A10_dev_service_p95_slow
     expr: |
       (
+        (
+          histogram_quantile(0.95, sum by (service, le) (
+            rate(traefik_service_request_duration_seconds_bucket{service=~".*dev.*"}[5m])
+          )) > 2.5
+        )
+        and on (service)
+        (
+          sum by (service) (rate(traefik_service_requests_total{service=~".*dev.*"}[10m])) >= 0.05
+        )
+      )
+      or on (service)
+      (
+        max by (service) (ALERTS{alertname="A10_dev_service_p95_slow", alertstate="firing"} == 1)
+        and on (service)
         histogram_quantile(0.95, sum by (service, le) (
           rate(traefik_service_request_duration_seconds_bucket{service=~".*dev.*"}[5m])
-        )) > 2.5
-      )
-      and on (service)
-      (
-        sum by (service) (rate(traefik_service_requests_total{service=~".*dev.*"}[10m])) >= 0.05
+        )) > 2.0
       )
     for: 10m
     labels:
@@ -281,4 +308,4 @@ groups:
       class: A10
     annotations:
       summary: "A10 dev service p95 response time > 2.5s for 10m (warning, not a page)"
-      description: "Same 2.5s/10m threshold and >= 0.05 req/s traffic floor as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail with RECOVERED. Recovers when p95 <= 2.5s or traffic drops below the floor."
+      description: "Same 2.5s/10m threshold, >= 0.05 req/s traffic floor and 2.0s recovery hysteresis as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail from alerts@dtcdev.click with RECOVERED. Resolves when p95 <= 2.0s or traffic drops below the floor."

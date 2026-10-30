@@ -72,6 +72,7 @@ def test_a10_semantic_unittest_fixture():
         "web-sandbox@docker",   # slow + trickle -> floor blocks
         "aisl-dev-source-web@file",  # slow + busy -> warning; + trickle -> quiet
         "web-fast@docker",      # fast + busy -> quiet
+        "web-hyst@docker",      # slow -> fires -> band (2.0,2.5] stays firing -> fast resolves
     ):
         assert service in ftext
     assert "groupname: obs-a10-slowness" in ftext
@@ -111,3 +112,50 @@ def test_alb_export_script_readonly():
     assert "put-bucket" not in text
     assert "delete-" not in text
     assert re.search(r"coolify/obs/latency/alb", text)
+
+def test_a10_ac3_dev_only_route_and_hysteresis():
+    """f5d8e22b AC3: slowness mail goes ONLY to dev@dtcdev.click from
+    alerts@dtcdev.click (never prod-real / global noreply@), and the native
+    p95 rules hold a recovery hysteresis band at 2.0s."""
+    tmpl = (ROOT / "configs" / "alertmanager" / "alertmanager.yml.template").read_text()
+    import yaml
+
+    cfg = yaml.safe_load(tmpl)
+    routes = cfg["route"]["routes"]
+    a10_routes = [r for r in routes if 'class="A10"' in str(r.get("matchers", []))]
+    assert len(a10_routes) == 1, routes
+    # first match wins: drills keep precedence over the A10 route
+    drill_idx = min(i for i, r in enumerate(routes) if "drill" in str(r.get("matchers", [])))
+    assert routes.index(a10_routes[0]) > drill_idx
+    # the old alertname route for the dev rule is covered by the class route
+    assert not [r for r in routes if 'A10_dev_service_p95_slow' in str(r.get("matchers", []))]
+
+    recv = {r["name"]: r for r in cfg["receivers"]}
+    slow = recv["slowness-dev"]
+    emails = slow["email_configs"]
+    assert len(emails) == 1
+    assert emails[0]["to"] == "dev@dtcdev.click"
+    assert emails[0]["from"] == "alerts@dtcdev.click"
+    assert emails[0]["send_resolved"] is True
+    assert emails[0]["smarthost"] == "__SMTP_ALERTS_SMARTHOST__"
+    assert emails[0]["auth_username"] == "__SMTP_ALERTS_USER__"
+    assert emails[0]["auth_password"] == "__SMTP_ALERTS_PASSWORD__"
+    # prod-real must never receive slowness: class A10 route -> slowness-dev only
+    prod_tos = [e["to"] for e in recv["prod-real"]["email_configs"]]
+    assert "dev@dtcdev.click" in prod_tos and "alexey@datatalks.club" in prod_tos
+    assert cfg["global"]["smtp_from"] == "noreply@datatalks.club"
+
+    raw = (ROOT / "configs" / "vmalert" / "rules-vm.yml").read_text()
+    rules = yaml.safe_load(raw)
+    group = next(g for g in rules["groups"] if g["name"] == "obs-a10-slowness")
+    by_name = {r["alert"]: r for r in group["rules"]}
+    for name in ("A10_service_p95_slow", "A10_dev_service_p95_slow"):
+        expr = by_name[name]["expr"]
+        assert f'ALERTS{{alertname="{name}", alertstate="firing"}}' in expr
+        assert "> 2.0" in expr  # recovery threshold below the 2.5 fire threshold
+        assert "max by (service)" in expr  # keeps the alert label set stable
+
+    installer = (ROOT / "scripts" / "install-obs-alerting.sh").read_text()
+    for ph in ("__SMTP_ALERTS_SMARTHOST__", "__SMTP_ALERTS_USER__", "__SMTP_ALERTS_PASSWORD__"):
+        assert ph in installer
+    assert "resolve(\"alerts\")" in installer

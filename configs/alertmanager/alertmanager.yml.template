@@ -4,6 +4,8 @@
 # Placeholders below are replaced on-host; this file is safe to commit review.
 # Real (non-drill) alerts -> prod-real receiver: alexey@datatalks.club + dev@.
 # Drills (drill=true label or *_canary alertname) -> dev-only: dev@dtcdev.click.
+# Slowness (class A10, f5d8e22b AC3) -> slowness-dev ONLY: dev@dtcdev.click
+# from alerts@dtcdev.click (its own SES account) — never prod-real.
 # No real prod alert is muted. send_resolved: true on every email_config (AC5).
 
 global:
@@ -34,11 +36,14 @@ route:
     receiver: 'dev-only'
   - matchers: [ 'alertname=~".*canary.*"' ]
     receiver: 'dev-only'
-  # Dev-environment signals never page prod either: A10_dev_service_p95_slow
-  # commits to 'visible via dev-only mail' (t181f4832), so it is routed by
-  # alertname here (its rule labels stay untouched for that intake's tests).
-  - matchers: [ 'alertname="A10_dev_service_p95_slow"' ]
-    receiver: 'dev-only'
+  # f5d8e22b AC3: every slowness alert (class A10 — both the prod and the dev
+  # p95 rule) pages dev@dtcdev.click ONLY, from alerts@dtcdev.click (its own
+  # SES account, injected below), with RECOVERED and repeat <=1/h. Before this
+  # route the prod p95 rule fell through to prod-real (alexey@ + dev@) with the
+  # global noreply@ sender, violating AC3's "mail ONLY to dev@ from alerts@".
+  # Drills keep precedence over this route.
+  - matchers: [ 'class="A10"' ]
+    receiver: 'slowness-dev'
 
 receivers:
 - name: 'prod-real'
@@ -76,6 +81,29 @@ receivers:
     send_resolved: true
     headers:
       Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+    html: |
+      {{ range .Alerts }}
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      {{ .Annotations.summary }}<br>
+      {{ .Annotations.description }}<br>
+      {{ end }}
+    text: |
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ end }}
+
+# f5d8e22b AC3: slowness receiver. Per-config smarthost/auth/from override the
+# globals so mail goes out from alerts@dtcdev.click via its own SES account
+# (the same account the probe-leg monitors use), to dev@dtcdev.click ONLY.
+- name: 'slowness-dev'
+  email_configs:
+  - to: 'dev@dtcdev.click'
+    from: 'alerts@dtcdev.click'
+    smarthost: '__SMTP_ALERTS_SMARTHOST__'
+    auth_username: '__SMTP_ALERTS_USER__'
+    auth_password: '__SMTP_ALERTS_PASSWORD__'
+    send_resolved: true
+    headers:
+      Subject: '[SLOWNESS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
     html: |
       {{ range .Alerts }}
       <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>

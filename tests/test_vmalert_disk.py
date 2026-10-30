@@ -94,12 +94,16 @@ def test_prometheus_has_hetzner_tunnel_target():
 
 def test_dev_env_alerts_route_dev_only():
     # A10_dev_service_p95_slow commits to 'visible via dev-only mail'
-    # (t181f4832); AM routes it by alertname so dev signals never page prod
-    # while its rule labels stay untouched for that intake's tests.
+    # (t181f4832). Since f5d8e22b AC3 the class="A10" route covers it: both
+    # slowness rules (prod + dev) land on slowness-dev -> dev@dtcdev.click
+    # only, from alerts@dtcdev.click, never prod-real.
     data = yaml.safe_load(AM_TMPL.read_text())
-    dev_routes = [c for c in data["route"]["routes"]
-                  if 'alertname="A10_dev_service_p95_slow"' in c["matchers"]]
-    assert len(dev_routes) == 1 and dev_routes[0]["receiver"] == "dev-only"
+    a10_routes = [c for c in data["route"]["routes"]
+                  if 'class="A10"' in c["matchers"]]
+    assert len(a10_routes) == 1 and a10_routes[0]["receiver"] == "slowness-dev"
+    # no legacy per-alertname dev route left behind
+    assert not [c for c in data["route"]["routes"]
+                if 'alertname="A10_dev_service_p95_slow"' in c["matchers"]]
 
 
 def test_canary_rules_carry_drill_label():
@@ -117,9 +121,11 @@ def test_routing_real_to_prod_drills_to_dev():
     prod = receivers["prod-real"]
     tos = {e["to"] for e in prod["email_configs"]}
     assert tos == {"alexey@datatalks.club", "dev@dtcdev.click"}
-    # Drill alerts (drill=true or *_canary) -> dev-only -> dev@ only.
+    # Drill alerts (drill=true or *_canary) -> dev-only -> dev@ only; the
+    # f5d8e22b AC3 slowness route adds a third child receiver (dev-only mail
+    # from alerts@dtcdev.click) without widening prod-real.
     child = {c["receiver"] for c in route["routes"]}
-    assert child == {"dev-only"}
+    assert child == {"dev-only", "slowness-dev"}
     matchers = [m for c in route["routes"] for m in c["matchers"]]
     assert any('drill="true"' in m for m in matchers)
     assert any('canary' in m for m in matchers)

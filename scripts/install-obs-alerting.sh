@@ -29,24 +29,57 @@ ssh "$HOST" 'sudo cp /data/obs/configs/vm/prometheus.yml /data/obs/configs/vm/pr
 ssh "$HOST" 'sudo cp /data/obs/docker-compose.yml /data/obs/docker-compose.yml.bak-$(date -u +%Y%m%dT%H%M%SZ) && sudo mv /tmp/docker-compose.yml.new /data/obs/docker-compose.yml && sudo chmod 644 /data/obs/docker-compose.yml && echo "compose synced (backup kept)"'
 
 # Inject SMTP creds on-host from /etc/msmtprc (root 600) without printing values.
-# msmtprc format: host ..., port ..., user ..., password ..., from ...
-# AM runs as nobody (65534): chown so AM can read, others (non-root) cannot.
+# msmtprc holds per-account blocks (account <name>: host/port/user/password).
+# The global block uses the primary SES account (noreply@datatalks.club); the
+# `alerts` account (alerts@dtcdev.click, f5d8e22b AC3 slowness sender) fills
+# the slowness-dev receiver placeholders. AM runs as nobody (65534): chown so
+# AM can read, others (non-root) cannot.
 ssh "$HOST" 'sudo python3 - <<PY
 import re, os, stat
 src = open("/etc/msmtprc").read()
-def grab(k):
-    m = re.search(rf"^{k}\s+(\S+)", src, re.M)
-    return m.group(1) if m else ""
-host = grab("host"); port = grab("port") or "587"; user = grab("user"); pw = grab("password")
+defaults, accounts, cur = {}, {}, None
+for line in src.splitlines():
+    line = line.strip()
+    if not line or line.startswith("#"):
+        continue
+    if re.match(r"^account\s+default\s*:", line):
+        cur = None
+        continue
+    m = re.match(r"^account\s+(\S+)$", line)
+    if m:
+        cur = m.group(1)
+        accounts.setdefault(cur, {})
+        continue
+    m = re.match(r"^([A-Za-z][A-Za-z0-9_-]*)\s+(\S+)$", line)
+    if m:
+        k, v = m.group(1), m.group(2)
+        (defaults if cur is None else accounts[cur])[k] = v
+
+def resolve(name):
+    merged = dict(defaults)
+    merged.update(accounts.get(name, {}))
+    return merged
+
+primary = accounts.get("ses") or next((a for a in accounts.values() if a.get("host")), {})
+assert primary.get("host") and primary.get("user"), "primary SES account missing in msmtprc"
+alerts = resolve("alerts")
+assert alerts.get("host") and alerts.get("user") and alerts.get("password"), "alerts account missing in msmtprc (AC3 slowness sender)"
 tmpl = open("/tmp/alertmanager.yml.template").read()
 assert "__SMTP_SMARTHOST__" in tmpl, "template mismatch"
-out = tmpl.replace("__SMTP_SMARTHOST__", f"{host}:{port}").replace("__SMTP_USER__", user).replace("__SMTP_PASSWORD__", pw)
+phost, pport = primary["host"], primary.get("port", "587")
+puser, ppw = primary["user"], primary.get("password", "")
+ahost, aport = alerts["host"], alerts.get("port", "587")
+auser, apw = alerts["user"], alerts["password"]
+out = tmpl.replace("__SMTP_SMARTHOST__", phost + ":" + pport)
+out = out.replace("__SMTP_USER__", puser).replace("__SMTP_PASSWORD__", ppw)
+out = out.replace("__SMTP_ALERTS_SMARTHOST__", ahost + ":" + aport)
+out = out.replace("__SMTP_ALERTS_USER__", auser).replace("__SMTP_ALERTS_PASSWORD__", apw)
 assert "__SMTP_" not in out, "unreplaced placeholder"
 p = "/data/obs/alertmanager/alertmanager.yml"
 open(p, "w").write(out)
 os.chmod(p, 0o600)
 os.chown(p, 65534, 65534)
-print(f"wrote {p} mode=600 owner=65534 user_len={len(user)} pw_len={len(pw)}")
+print("wrote %s mode=600 owner=65534 user_len=%d pw_len=%d alerts_user_len=%d alerts_pw_len=%d" % (p, len(puser), len(ppw), len(auser), len(apw)))
 PY'
 ssh "$HOST" 'sudo rm -f /tmp/alertmanager.yml.template; sudo ls -l /data/obs/alertmanager/ /data/obs/configs/blackbox/ /data/obs/rules/'
 

@@ -40,7 +40,7 @@ tests:
               class: A10
             exp_annotations:
               summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
-              description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only via alertmanager (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+              description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Hysteresis: stays firing while p95 > 2.0s, resolves (RECOVERED) at <= 2.0s. Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only from alerts@dtcdev.click via the alertmanager class=A10 slowness route (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
       - eval_time: 20m
         groupname: obs-a10-slowness
         alertname: A10_dev_service_p95_slow
@@ -97,7 +97,7 @@ tests:
               class: A10
             exp_annotations:
               summary: "A10 dev service p95 response time > 2.5s for 10m (warning, not a page)"
-              description: "Same 2.5s/10m threshold and >= 0.05 req/s traffic floor as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail with RECOVERED. Recovers when p95 <= 2.5s or traffic drops below the floor."
+              description: "Same 2.5s/10m threshold, >= 0.05 req/s traffic floor and 2.0s recovery hysteresis as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail from alerts@dtcdev.click with RECOVERED. Resolves when p95 <= 2.0s or traffic drops below the floor."
       - eval_time: 20m
         groupname: obs-a10-slowness
         alertname: A10_service_p95_slow
@@ -152,4 +152,57 @@ tests:
       - eval_time: 20m
         groupname: obs-a10-slowness
         alertname: A10_dev_service_p95_slow
+        exp_alerts: []
+
+  # Case 6 (f5d8e22b AC3): hysteresis — after firing, p95 dropping into the
+  # (2.0, 2.5] band must keep the alert FIRING (no FAIL/RECOVERED thrash); it
+  # resolves only when p95 falls <= 2.0s.
+  # Phase A ticks 0..30  (0..15m):   all requests slow  -> p95 ~4.81s, fires at 10m.
+  # Phase B ticks 31..61 (15.5m..30.5m): 5.6/6 fast, 0.4/6 slow -> p95 ~2.15s (in band).
+  # Phase C ticks 62..82 (31m..41m): all requests fast -> p95 ~0.095s, resolves.
+  - interval: 30s
+    input_series:
+      - series: 'traefik_service_requests_total{service="web-hyst@docker",instance="10.100.0.1:8082"}'
+        values: '0+6x82'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-hyst@docker",instance="10.100.0.1:8082",le="0.1"}'
+        values: '0+0x30 5.6+5.6x30 179.6+6x20'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-hyst@docker",instance="10.100.0.1:8082",le="0.3"}'
+        values: '0+0x30 5.6+5.6x30 179.6+6x20'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-hyst@docker",instance="10.100.0.1:8082",le="1.2"}'
+        values: '0+0x30 5.6+5.6x30 179.6+6x20'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-hyst@docker",instance="10.100.0.1:8082",le="5"}'
+        values: '0+6x30 192+6x30 372+6x20'
+      - series: 'traefik_service_request_duration_seconds_bucket{service="web-hyst@docker",instance="10.100.0.1:8082",le="+Inf"}'
+        values: '0+6x30 192+6x30 372+6x20'
+    alert_rule_test:
+      # Phase A: slow + busy -> pending then FIRING (same as Case 1 shape;
+      # the engine starts `for` only once rate() has two samples, so firing
+      # lands ~12m30s rather than 10m sharp — same in prod warmup).
+      - eval_time: 13m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts:
+          - exp_labels:
+              service: web-hyst@docker
+              severity: critical
+              class: A10
+            exp_annotations:
+              summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
+              description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Hysteresis: stays firing while p95 > 2.0s, resolves (RECOVERED) at <= 2.0s. Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only from alerts@dtcdev.click via the alertmanager class=A10 slowness route (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+      # Phase B: p95 ~2.15s (recovery band) -> must STILL be firing (hysteresis).
+      - eval_time: 20m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
+        exp_alerts:
+          - exp_labels:
+              service: web-hyst@docker
+              severity: critical
+              class: A10
+            exp_annotations:
+              summary: "A10 service p95 response time > 2.5s for 10m (prod services, real traffic)"
+              description: "Traefik per-service p95 above 2.5s sustained 10m on main VM :8428, prod-like services (name without 'dev') with rate >= 0.05 req/s over 10m (t181f4832: low-traffic trickle cannot page; dev services have a separate warning rule). Hysteresis: stays firing while p95 > 2.0s, resolves (RECOVERED) at <= 2.0s. Probe-TTFB leg (A11) is covered by coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds, latency VM :8429 only). Mail is dev-only from alerts@dtcdev.click via the alertmanager class=A10 slowness route (repeat <=1/h, RECOVERED on clear). Drill: push a synthetic slow prod-service series to :8428 (never shape prod traffic, never mute real alerts); clear: remove the series."
+      # Phase C: p95 ~0.095s (< 2.0 recovery) -> resolved.
+      - eval_time: 35m
+        groupname: obs-a10-slowness
+        alertname: A10_service_p95_slow
         exp_alerts: []
