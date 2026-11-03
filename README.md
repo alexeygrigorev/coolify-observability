@@ -32,9 +32,10 @@ record `probe_ttfb_seconds` / `probe_total_seconds` per URL for CMP home +
 course, AISHL home + content, Relay /health, website home + /events/past, and
 (since 2026-10-30, f5d8e22b AC1) the AWS-hosted services hub/ops/dapier —
 they never pass through the Contabo Traefik proxies, so probes are their only
-per-service latency source. Fleet dedup per t1634u/6e626719: env overrides
-trim duplicate CMP probes on Contabo (hetzner 9, contabo-a 5, contabo-b 6);
-all seven AC2 URLs stay covered across the fleet.
+per-service latency source. Each monitor records the full URL set on every
+run, including CMP home + the ML Zoomcamp course page; CMP `/api/health/`
+checks remain separate from these page-level TTFB probes. The service label
+lets the query below combine samples across Hetzner and both Contabo hosts.
 
 One PromQL p95 per service (30d, latency VM `:8429/vmui`):
 
