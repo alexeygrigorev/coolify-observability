@@ -1,4 +1,4 @@
-"""vmalert disk rules: all-hosts warn/crit/predict/inodes + node-absent + prod routing (t1493u)."""
+"""vmalert disk rules: all-hosts warn/crit/predict/inodes + node-absent + routing."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,17 +18,16 @@ REQUIRED_DISK_ALERTS = {
     "A2_disk_fill_predict": ("warning", {"predict_linear", "86400", "0.4"}),
     "A2_disk_inodes_warn": ("warning", {"node_filesystem_files_free", "0.1"}),
     "A2_disk_inodes_crit": ("critical", {"node_filesystem_files_free", "0.05"}),
-    "A2_disk_pressure": ("warning", set()),
     "A2_disk_fill_6h": ("critical", {"predict_linear", "21600", "0.15"}),
 }
 FSTYPE_GUARD = 'fstype!~"tmpfs|overlay|squashfs|vfat|fuse.*"'
 EXPECTED_ABSENT_HOSTS = {"contabo-a", "contabo-b", "hetzner"}
 # t1885u/3bf25bda (deployed 2026-10-29, reconciled into source 2026-10-30):
-# A2_disk_crit 8%/10% hysteresis for 10m, A2_disk_pressure 2m, A2_disk_fill_6h
-# 30m added alongside the still-present A2_disk_fill_predict 24h horizon.
+# A2_disk_crit 8%/10% hysteresis for 10m, duplicate A2_disk_pressure deleted,
+# and A2_disk_fill_6h 30m added alongside A2_disk_fill_predict's 24h horizon.
 FOR_SECONDS = {"A2_disk_warn": "10m", "A2_disk_crit": "10m",
                "A2_disk_fill_predict": "30m", "A2_disk_inodes_warn": "10m",
-               "A2_disk_inodes_crit": "10m", "A2_disk_pressure": "2m",
+               "A2_disk_inodes_crit": "10m",
                "A2_disk_fill_6h": "30m"}
 
 
@@ -58,20 +57,14 @@ def test_disk_rules_present_all_hosts():
         for needle in needles:
             assert needle in rule["expr"], f"{alert} expr must contain {needle!r}"
         # all-hosts: no hardcoded host filter on disk exprs; fstype guard excludes
-        # ephemeral mounts (A2_disk_pressure is a root-mountpoint probe by design,
-        # t1885u: mountpoint="/" instead of the fstype guard)
+        # ephemeral mounts.
         assert 'host="' not in rule["expr"] and "host:" not in rule["expr"]
-        if alert != "A2_disk_pressure":
-            assert "fstype" in rule["expr"]
+        assert "fstype" in rule["expr"]
         assert rule["for"] == FOR_SECONDS[alert]
 
 
 def test_disk_fstype_guard_matches_intake():
     for alert in REQUIRED_DISK_ALERTS:
-        if alert == "A2_disk_pressure":
-            _, rule = _alerts()[alert][0]
-            assert 'mountpoint="/"' in rule["expr"], "pressure probe is root-only"
-            continue
         _, rule = _alerts()[alert][0]
         assert FSTYPE_GUARD in rule["expr"], f"{alert} must exclude tmpfs|overlay|squashfs|vfat|fuse.*"
 
@@ -93,9 +86,9 @@ def test_node_exporter_absent_per_host():
         assert '== 0' in rule["expr"]
 
 
-def test_disk_legacy_guards_kept():
+def test_duplicate_disk_pressure_removed_canary_retained():
     alerts = set(_alerts())
-    assert "A2_disk_pressure" in alerts
+    assert "A2_disk_pressure" not in alerts
     assert "A2_disk_canary" in alerts
 
 
