@@ -36,15 +36,9 @@ groups:
 - name: obs-a2-disk
   interval: 30s
   rules:
-  - alert: A2_disk_pressure
-    expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
-    for: 2m
-    labels:
-      severity: warning
-      class: A2
-    annotations:
-      summary: "A2 root disk low (<15% free)"
-      description: "Root filesystem free <15%. Real guard (currently ~89% free); drill uses synthetic canary below, never fills root."
+  # t1885u / 3bf25bda (2026-10-29): remove duplicate 2m root-disk pressure
+  # alert. A2_disk_warn is the single sustained <15% warning; the warning
+  # route sends it to dev-only, while critical disk alerts remain actionable.
   # t1493u AC1: real disk guards for ALL hosts (no host filter) and all real
   # mounts (fstype !~ tmpfs|overlay|squashfs|vfat|fuse.* per intake).
   # DiskFreeLow warn <15% free 10m; DiskFreeCritical <8% 5m; DiskFillsIn24h
