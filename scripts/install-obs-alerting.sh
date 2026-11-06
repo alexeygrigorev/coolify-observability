@@ -20,9 +20,9 @@ scp "$REPO_DIR/configs/blackbox/blackbox.yml" "$HOST:/tmp/blackbox.yml"
 scp "$REPO_DIR/configs/vm/prometheus.yml" "$HOST:/tmp/prometheus.yml"
 scp "$REPO_DIR/docker-compose.yml" "$HOST:/tmp/docker-compose.yml.new"
 
-ssh "$HOST" 'sudo mv /tmp/rules-vm.yml /tmp/rules-vl.yml /data/obs/rules/ && sudo chmod 644 /data/obs/rules/*.yml && ls -l /data/obs/rules/'
+ssh "$HOST" 'sudo mv /tmp/rules-vm.yml /tmp/rules-vl.yml /data/obs/rules/ && sudo chmod 644 /data/obs/rules/rules-vm.yml /data/obs/rules/rules-vl.yml && ls -l /data/obs/rules/'
 ssh "$HOST" 'sudo mv /tmp/blackbox.yml /data/obs/configs/blackbox/blackbox.yml && sudo chmod 644 /data/obs/configs/blackbox/blackbox.yml && ls -l /data/obs/configs/blackbox/'
-# Backup + sync prometheus scrape config (adds blackbox-https job). VM hot-reloads,
+# Backup + sync Prometheus scrape config (production and canary blackbox jobs). VM hot-reloads,
 # but if targets do not appear within 90s, operator restarts victoria-metrics (data preserved).
 ssh "$HOST" 'sudo cp /data/obs/configs/vm/prometheus.yml /data/obs/configs/vm/prometheus.yml.bak-$(date -u +%Y%m%dT%H%M%SZ) && sudo mv /tmp/prometheus.yml /data/obs/configs/vm/prometheus.yml && sudo chmod 644 /data/obs/configs/vm/prometheus.yml && echo "prometheus synced (backup kept)"'
 # Backup + sync compose (adds blackbox/vmalert/AM/canary, no changes to VM/VL/Vector).
