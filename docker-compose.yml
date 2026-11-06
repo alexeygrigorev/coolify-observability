@@ -165,6 +165,31 @@ services:
     memswap_limit: 96m
     cpus: "0.25"
 
+  # A1 canary: isolated loopback-only probe target for dev-only routing drills.
+  # Stopping this container never interrupts probes to public production sites.
+  obs-a1-https-canary:
+    image: python:3.12-alpine
+    container_name: obs-a1-https-canary
+    restart: unless-stopped
+    command:
+      - python3
+      - -c
+      - |
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+            def log_message(self, format, *args):
+                pass
+        HTTPServer(("127.0.0.1", 9116), Handler).serve_forever()
+    network_mode: host
+    mem_limit: 32m
+    memswap_limit: 32m
+    cpus: "0.05"
+    pids_limit: 16
+
   # A5 canary: tiny sleep, always running; cadvisor exposes container_last_seen.
   obs-a5-canary:
     image: alpine:3.20

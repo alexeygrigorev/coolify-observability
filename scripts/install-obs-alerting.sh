@@ -84,5 +84,5 @@ PY'
 ssh "$HOST" 'sudo rm -f /tmp/alertmanager.yml.template; sudo ls -l /data/obs/alertmanager/ /data/obs/configs/blackbox/ /data/obs/rules/'
 
 echo "Configs synced. Next: deploy compose services from $REPO_DIR/docker-compose.yml"
-echo "(operator: ssh $HOST 'cd /data/obs && sudo docker compose up -d blackbox vmalert-vm vmalert-vl alertmanager obs-a5-canary')"
-echo "Then verify: curl localhost:9093/api/v2/status, :8880/api/v1/rules, :8881/api/v1/rules, and VM targets include blackbox-https."
+echo "(operator: ssh $HOST 'cd /data/obs && sudo docker compose up -d blackbox vmalert-vm vmalert-vl alertmanager obs-a1-https-canary obs-a5-canary')"
+echo "Then verify: curl localhost:9093/api/v2/status, :8880/api/v1/rules, :8881/api/v1/rules, and VM targets include blackbox-https and blackbox-https-canary."
