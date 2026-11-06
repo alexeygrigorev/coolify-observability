@@ -3,6 +3,7 @@
 
 Sensors read real canary cgroup/filesystem data, Docker health/restarts and
 VictoriaLogs queries. SMTP failures retain ordered transitions for retry.
+This harness is dev-only and refuses any recipient other than dev@dtcdev.click.
 """
 from __future__ import annotations
 
@@ -19,7 +20,9 @@ import time
 import urllib.parse
 import urllib.request
 
-ALERT_TO = os.environ.get('ALERT_TO', 'alexey@datatalks.club,dev@dtcdev.click')
+ALERT_TO = os.environ.get('ALERT_TO', 'dev@dtcdev.click').strip()
+if ALERT_TO.lower() != 'dev@dtcdev.click':
+    raise RuntimeError('drill_alerter.py may only send to dev@dtcdev.click')
 INTERVAL = float(os.environ.get('POLL_INTERVAL', '1'))
 HOLD = float(os.environ.get('ALERT_HOLD', '3'))
 # f5d8e22b latency drill (ops-only, like A1-A8): when LATENCY_URL is set,

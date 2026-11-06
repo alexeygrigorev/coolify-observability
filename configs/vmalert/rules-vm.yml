@@ -1,11 +1,11 @@
-# vmalert VM rules — Contabo prod (reviewed, dev@ only)
+# vmalert VM rules — Contabo prod.
 # Datasource: http://127.0.0.1:8428 (main VM). Notifier: Alertmanager :9093.
 # Each rule maps to tests/README.md repository IDs A1-A6 + A10 (f5d8e22b AC3).
 # A7 lives in rules-vl.yml. A11 (probe TTFB) is covered by
 # coolify-healthcheck/contabo-deadman scripts (probe_ttfb_seconds lives only
 # in latency VM :8429, not in this vmalert's :8428 datasource).
 # A8 is a routing property (retry), proven by every drill's mail.
-# All thresholds are currently OK (no firing); drills make exactly one fire + clear.
+# All thresholds are currently OK (no firing); canary drills make one fire + clear.
 # DECISION t1468u: approved for prod. t1493u AC3: real alerts -> prod-real
 # (alexey@datatalks.club + dev@dtcdev.click); drills (drill=true or *_canary)
 # -> dev@ only. Never mute real prod alerts.
@@ -21,8 +21,18 @@ groups:
       severity: critical
       class: A1
     annotations:
-      summary: "A1 HTTPS probe down (blackbox, prod-safe canary fault)"
-      description: "probe_success==0 for 1m. Drill: firewall blackbox egress to one target only; clear: remove rule. Real site stays up."
+      summary: "A1 production HTTPS target unavailable"
+      description: "The HTTPS probe for {{ $labels.instance }} has failed continuously for 1m. Check the affected service, edge proxy, and recent deploys; restore HTTPS availability."
+  - alert: A1_https_canary
+    expr: probe_success{job="blackbox-https-canary"} == 0
+    for: 1m
+    labels:
+      severity: warning
+      class: A1
+      drill: "true"
+    annotations:
+      summary: "A1 HTTPS alert-path canary probe failed"
+      description: "Local routing drill only. Stop obs-a1-https-canary to fire and start it to clear; production HTTPS targets are not changed."
   - alert: A1_blackbox_down
     expr: up{job="blackbox-https"} == 0
     for: 1m
@@ -31,7 +41,7 @@ groups:
       class: A1
     annotations:
       summary: "A1 blackbox prober scrape down"
-      description: "Blackbox exporter itself unreachable; drill uses target egress block, not prober stop."
+      description: "The blackbox exporter has been unreachable for 1m. Check the exporter and its host; target probe failures are reported by A1_https_down."
 
 - name: obs-a2-disk
   interval: 30s

@@ -145,7 +145,7 @@ def restore():
 
 @pytest.fixture(autouse=True)
 def clean_scenario(request):
-    if request.node.name == 'test_matrix_ids_complete':
+    if request.node.name == 'test_matrix_ids_complete' or request.node.get_closest_marker('no_drill_stack'):
         yield
         return
     request.getfixturevalue('drill_stack')
