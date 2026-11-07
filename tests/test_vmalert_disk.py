@@ -63,6 +63,17 @@ def test_disk_rules_present_all_hosts():
         assert rule["for"] == FOR_SECONDS[alert]
 
 
+def test_disk_annotations_name_host_and_mountpoint():
+    for alert in REQUIRED_DISK_ALERTS:
+        _, rule = _alerts()[alert][0]
+        annotations = rule["annotations"]
+        for field in ("summary", "description"):
+            value = annotations[field]
+            assert "{{ $labels.host }}" in value, f"{alert} {field} must name the host"
+            assert "{{ $labels.mountpoint }}" in value, f"{alert} {field} must name the mount"
+            assert "all hosts" not in value.lower(), f"{alert} {field} must identify the firing series"
+
+
 def test_disk_fstype_guard_matches_intake():
     for alert in REQUIRED_DISK_ALERTS:
         _, rule = _alerts()[alert][0]
@@ -148,3 +159,20 @@ def test_routing_real_to_prod_drills_to_dev():
                 assert e["send_resolved"] is False, f"{r['name']} alexey leg must not send_resolved"
     blob = AM_TMPL.read_text()
     assert "__SMTP_SMARTHOST__" in blob  # placeholders only, secrets injected on-host
+
+
+def test_alertmanager_email_templates_name_host_and_mountpoint():
+    data = yaml.safe_load(AM_TMPL.read_text())
+    assert "host" in data["route"]["group_by"]
+    receivers = {r["name"]: r for r in data["receivers"]}
+    prod = receivers["prod-real"]
+    assert {e["to"] for e in prod["email_configs"]} == {
+        "alexey@datatalks.club", "dev@dtcdev.click"
+    }
+    for receiver in data["receivers"]:
+        for email in receiver["email_configs"]:
+            subject = email["headers"]["Subject"]
+            assert ".GroupLabels.host" in subject, f"{receiver['name']} subject must include the group host"
+            body = f"{email.get('html', '')}\n{email.get('text', '')}"
+            assert ".Labels.host" in body, f"{receiver['name']} email must print the alert host"
+            assert ".Labels.mountpoint" in body, f"{receiver['name']} email must print the alert mount"

@@ -27,7 +27,7 @@ global:
 route:
   # Default = real alerts (drills fall through to the child routes below).
   receiver: 'prod-real'
-  group_by: ['alertname', 'class']
+  group_by: ['alertname', 'class', 'host']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
@@ -60,28 +60,28 @@ receivers:
   - to: 'alexey@datatalks.club'
     send_resolved: false
     headers:
-      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }}){{ if .GroupLabels.host }} {{ .GroupLabels.host }}{{ end }}'
     html: |
       {{ range .Alerts }}
-      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}<br>
       {{ .Annotations.summary }}<br>
       {{ .Annotations.description }}<br>
       {{ end }}
     text: |
-      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
       {{ end }}
   - to: 'dev@dtcdev.click'
     send_resolved: true
     headers:
-      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }}){{ if .GroupLabels.host }} {{ .GroupLabels.host }}{{ end }}'
     html: |
       {{ range .Alerts }}
-      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}<br>
       {{ .Annotations.summary }}<br>
       {{ .Annotations.description }}<br>
       {{ end }}
     text: |
-      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
       {{ end }}
 
 - name: 'dev-only'
@@ -89,15 +89,15 @@ receivers:
   - to: 'dev@dtcdev.click'
     send_resolved: true
     headers:
-      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }}){{ if .GroupLabels.host }} {{ .GroupLabels.host }}{{ end }}'
     html: |
       {{ range .Alerts }}
-      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}<br>
       {{ .Annotations.summary }}<br>
       {{ .Annotations.description }}<br>
       {{ end }}
     text: |
-      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
       {{ end }}
 
 # f5d8e22b AC3: slowness receiver. Per-config smarthost/auth/from override the
@@ -112,15 +112,15 @@ receivers:
     auth_password: '__SMTP_ALERTS_PASSWORD__'
     send_resolved: true
     headers:
-      Subject: '[SLOWNESS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }})'
+      Subject: '[SLOWNESS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }}){{ if .GroupLabels.host }} {{ .GroupLabels.host }}{{ end }}'
     html: |
       {{ range .Alerts }}
-      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }})<br>
+      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}<br>
       {{ .Annotations.summary }}<br>
       {{ .Annotations.description }}<br>
       {{ end }}
     text: |
-      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}): {{ .Annotations.summary }}
+      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
       {{ end }}
 
 inhibit_rules: []
