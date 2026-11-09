@@ -142,7 +142,8 @@ def test_routing_real_to_prod_drills_to_dev():
     # f5d8e22b AC3 slowness route adds a third child receiver (dev-only mail
     # from alerts@dtcdev.click) without widening prod-real.
     child = {c["receiver"] for c in route["routes"]}
-    assert child == {"dev-only", "slowness-dev"}
+    # t2813u/t2814u: plus the mail-less obs-log receiver for A1 (paged once by healthcheck).
+    assert child == {"dev-only", "slowness-dev", "obs-log"}
     matchers = [m for c in route["routes"] for m in c["matchers"]]
     assert any('drill="true"' in m for m in matchers)
     assert any('canary' in m for m in matchers)
@@ -152,7 +153,7 @@ def test_routing_real_to_prod_drills_to_dev():
     # alexey@ prod-real leg is deliberately false (t1885u/3bf25bda, deployed
     # 2026-10-29) to keep RECOVERED noise off Alexey's mailbox.
     for r in data["receivers"]:
-        for e in r["email_configs"]:
+        for e in r.get("email_configs", []):
             if e["to"] == "dev@dtcdev.click":
                 assert e["send_resolved"] is True, f"{r['name']} dev leg must send_resolved"
             else:
@@ -170,7 +171,7 @@ def test_alertmanager_email_templates_name_host_and_mountpoint():
         "alexey@datatalks.club", "dev@dtcdev.click"
     }
     for receiver in data["receivers"]:
-        for email in receiver["email_configs"]:
+        for email in receiver.get("email_configs", []):
             subject = email["headers"]["Subject"]
             assert ".GroupLabels.host" in subject, f"{receiver['name']} subject must include the group host"
             body = f"{email.get('html', '')}\n{email.get('text', '')}"
