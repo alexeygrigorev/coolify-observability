@@ -17,6 +17,9 @@ groups:
   - alert: A1_https_down
     expr: probe_success{job="blackbox-https"} == 0
     for: 1m
+    # t2813u/t2814u: stay firing until 5 min green so a flapping probe is one
+    # incident, never FIRING/RESOLVED/FIRING/RESOLVED.
+    keep_firing_for: 5m
     labels:
       severity: critical
       class: A1

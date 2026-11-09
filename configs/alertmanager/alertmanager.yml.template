@@ -38,6 +38,15 @@ route:
     receiver: 'dev-only'
   - matchers: [ 'alertname=~".*canary.*"' ]
     receiver: 'dev-only'
+  # t2813u/t2814u: one incident = one mail. A1 probes relay/courses/website,
+  # which coolify-healthcheck (contabo-b) and the off-Contabo dead-man already
+  # page as ONE grouped service incident with 5-min-green RECOVERED and flap
+  # hold (machine-management monitors/incident-gate.sh). A1 stays evaluated and
+  # visible in vmalert/Alertmanager/vmui but sends no mail of its own, so the
+  # same outage can no longer page twice (and flap four times) from OBS too.
+  # Drill/canary routes above keep precedence.
+  - matchers: [ 'alertname="A1_https_down"' ]
+    receiver: 'obs-log'
   # f5d8e22b AC3: every slowness alert (class A10 — both the prod and the dev
   # p95 rule) pages dev@dtcdev.click ONLY, from alerts@dtcdev.click (its own
   # SES account, injected below), with RECOVERED and repeat <=1/h. Before this
@@ -83,6 +92,9 @@ receivers:
     text: |
       {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
       {{ end }}
+
+# t2813u/t2814u: no notification integration on purpose (see A1 route above).
+- name: 'obs-log'
 
 - name: 'dev-only'
   email_configs:

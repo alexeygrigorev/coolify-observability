@@ -7,8 +7,6 @@ rules:
     targets:
       - name: relay
         url: https://relay.datatalks.club/health/
-      - name: relay-dev
-        url: https://dev.relay.datatalks.club/health/
       - name: courses
         url: https://courses.datatalks.club/
       - name: website
