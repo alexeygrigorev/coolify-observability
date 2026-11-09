@@ -13,7 +13,7 @@ Rule binding: production fault-injection steps are PREP-ONLY; this file is the e
 
 ## Drill matrix (each canary FIRE goes to dev@ only, then CLEAR; record UTC/JST timestamps + message-ids)
 
-**A1 guardrail:** `A1_https_down` is a real production alert. An unlabeled A1 outage routes to `prod-real` (Alexey + dev) and must never be used for a drill. Fire only `A1_https_canary` with `sudo docker compose stop -t 1 obs-a1-https-canary`; clear with `sudo docker compose start obs-a1-https-canary`. This target is bound to `127.0.0.1:9116`. Do not firewall, block, or otherwise interrupt probes to public production sites.
+**A1 guardrail:** `A1_https_down` is a real production signal (it keeps firing 5 min after the probe recovers, `keep_firing_for`). Since t2813u/t2814u it routes to the mail-less `obs-log` receiver: the same outage is paged once, as a grouped service incident, by coolify-healthcheck/dead-man (machine-management `monitors/incident-gate.sh`). It must never be used for a drill. Fire only `A1_https_canary` with `sudo docker compose stop -t 1 obs-a1-https-canary`; clear with `sudo docker compose start obs-a1-https-canary`. This target is bound to `127.0.0.1:9116`. Do not firewall, block, or otherwise interrupt probes to public production sites.
 
 | Class | Production-safe injection | Expected alert | Clear |
 |-------|---------------------------|----------------|-------|

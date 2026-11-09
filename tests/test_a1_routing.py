@@ -78,6 +78,8 @@ def test_a1_canary_routes_dev_only_and_real_outage_pages_prod():
                 matches = labels.get("drill") == "true"
             elif matcher == 'alertname=~".*canary.*"':
                 matches = re.fullmatch(r".*canary.*", labels.get("alertname", "")) is not None
+            elif matcher == 'alertname="A1_https_down"':
+                matches = labels.get("alertname") == "A1_https_down"
             elif matcher == 'class="A10"':
                 matches = labels.get("class") == "A10"
             elif matcher == 'severity="warning"':
@@ -88,7 +90,11 @@ def test_a1_canary_routes_dev_only_and_real_outage_pages_prod():
                 return child["receiver"]
         return route["receiver"]
 
-    assert receiver_for({**real["labels"], "alertname": "A1_https_down"}) == "prod-real"
+    # t2813u/t2814u: A1 is grouped into the service incident mailed by the
+    # healthcheck/dead-man; it must not mail a second time.
+    assert receiver_for({**real["labels"], "alertname": "A1_https_down"}) == "obs-log"
+    assert not receivers["obs-log"].get("email_configs")
+    assert real["keep_firing_for"] == "5m"
     assert receiver_for({**canary["labels"], "alertname": "A1_https_canary"}) == "dev-only"
 
 
