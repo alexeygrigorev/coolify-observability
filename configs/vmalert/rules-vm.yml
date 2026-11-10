@@ -174,8 +174,8 @@ groups:
     annotations:
       summary: "A3 host memory low (<10% available)"
       description: "Host MemAvailable <10%. Real guard (currently ~90% free); drill uses synthetic canary below, never exhausts host."
-  # Live probe 2026-10-26: cadvisor exposes only system slices, no Docker container names/ids,
-  # so container_memory_* canary cannot fire. Synthetic canary proves pipeline for A3 class.
+  # Keep this synthetic memory canary independent of cAdvisor labels; real
+  # per-container memory and OOM alerts are in obs-f4-infra-health below.
   - alert: A3_canary_oom
     expr: obs_drill_mem_free_ratio < 0.2
     for: 1m
@@ -203,8 +203,8 @@ groups:
 - name: obs-a5-container
   interval: 30s
   rules:
-  # Live probe 2026-10-26: container_last_seen has no `name` label and no Docker ids
-  # (only system.slice), so absent-by-name would false-fire. Synthetic canary instead.
+  # Keep the synthetic canary for end-to-end alert-path drills. Real cAdvisor
+  # health and restart alerts are enabled in obs-h5-host-health below.
   - alert: A5_canary_missing
     expr: obs_drill_container_healthy == 0
     for: 1m
@@ -328,3 +328,141 @@ groups:
     annotations:
       summary: "A10 dev service p95 response time > 2.5s for 10m (warning, not a page)"
       description: "Same 2.5s/10m threshold, >= 0.05 req/s traffic floor and 2.0s recovery hysteresis as the critical rule, but for dev/sandbox services (name contains 'dev'); downgraded to warning by t181f4832 so dev trickle traffic cannot page. Still dev-only mail from alerts@dtcdev.click with RECOVERED. Resolves when p95 <= 2.0s or traffic drops below the floor."
+
+- name: obs-f4-infra-health
+  interval: 30s
+  rules:
+  - alert: F4_all_backends_down
+    expr: max by (host, service) (traefik_service_server_up) == 0
+    for: 20s
+    labels:
+      severity: critical
+      class: F4
+    annotations:
+      summary: "F4 all Traefik backends down for {{ $labels.service }} on {{ $labels.host }}"
+      description: "Traefik reports no healthy backend for this service. Check the app, proxy, and recent deploy; this alert routes through the real-incident email receiver."
+  - alert: F4_5xx_rate_high
+    expr: sum by (host, router) (rate(traefik_router_requests_total{code=~"502|503|504"}[1m])) > 1
+    for: 1m
+    labels:
+      severity: critical
+      class: F4
+    annotations:
+      summary: "F4 elevated 5xx rate on {{ $labels.router }} at {{ $labels.host }}"
+      description: "Traefik has served more than 1 502/503/504 response per second for at least 1m. Check backend health and host pressure."
+  - alert: F4_cpu_pressure_high
+    expr: rate(node_pressure_cpu_waiting_seconds_total[2m]) > 0.3
+    for: 3m
+    labels:
+      severity: warning
+      class: F4
+    annotations:
+      summary: "F4 CPU pressure high on {{ $labels.host }}"
+      description: "Linux CPU pressure has exceeded 30% for 3m. Check worker load and healthcheck churn."
+  - alert: F4_host_load_high
+    expr: node_load1 > 16
+    for: 5m
+    labels:
+      severity: warning
+      class: F4
+    annotations:
+      summary: "F4 host load high on {{ $labels.host }}"
+      description: "The 1-minute load average has exceeded 16 for 5m. Check CPU saturation and waiting tasks."
+  - alert: H2_container_memory_high
+    expr: |
+      (
+        max by (host, name) (container_memory_working_set_bytes{name!=""})
+        /
+        max by (host, name) (container_spec_memory_limit_bytes{name!=""})
+      ) > 0.85
+      and on (host, name)
+      max by (host, name) (container_spec_memory_limit_bytes{name!=""}) < 1e14
+    for: 5m
+    labels:
+      severity: warning
+      class: H2
+    annotations:
+      summary: "H2 container memory above 85% of limit: {{ $labels.name }} on {{ $labels.host }}"
+      description: "Container working set stayed above 85% of its configured memory limit for 5m. Check the container before it reaches its cgroup limit."
+  - alert: H2_container_oom_kill
+    expr: increase(container_oom_events_total{name!=""}[5m]) > 0
+    labels:
+      severity: critical
+      class: H2
+    annotations:
+      summary: "H2 container OOM event: {{ $labels.name }} on {{ $labels.host }}"
+      description: "cAdvisor recorded an OOM event in the last 5m. Inspect the affected container and its memory limit."
+
+- name: obs-h5-host-health
+  interval: 30s
+  rules:
+  - alert: H5_traefik_metrics_down
+    expr: up{job="traefik"} == 0
+    for: 1m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 Traefik metrics unavailable on {{ $labels.host }}"
+      description: "The internal Traefik metrics endpoint has failed to scrape for 1m; proxy status and 5xx alerts may be blind."
+  - alert: H5_certificate_expiring_14d
+    expr: |
+      (probe_ssl_earliest_cert_expiry{job="blackbox-https"} - time() < 1209600)
+      and
+      (probe_ssl_earliest_cert_expiry{job="blackbox-https"} - time() >= 604800)
+    for: 5m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 TLS certificate expires within 14 days: {{ $labels.instance }}"
+      description: "The certificate expiry metric is within 14 days. Renew it before requests start failing."
+  - alert: H5_certificate_expiring_7d
+    expr: probe_ssl_earliest_cert_expiry{job="blackbox-https"} - time() < 604800
+    for: 5m
+    labels:
+      severity: critical
+      class: H5
+    annotations:
+      summary: "H5 TLS certificate expires within 7 days: {{ $labels.instance }}"
+      description: "The certificate expiry metric is within 7 days. Renew it immediately."
+  - alert: H5_container_restart_burst
+    expr: changes(container_start_time_seconds{name!=""}[15m]) > 1
+    for: 2m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 repeated container restarts: {{ $labels.name }} on {{ $labels.host }}"
+      description: "The container start time changed more than once in 15m, indicating repeated restarts or recreates. Check Docker events and recent deploys."
+  - alert: H5_container_unhealthy
+    expr: container_health_state{name!=""} == 0
+    for: 1m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 unhealthy container: {{ $labels.name }} on {{ $labels.host }}"
+      description: "cAdvisor reports a failed or starting Docker healthcheck for at least 1m. Check the container's healthcheck output."
+  - alert: H5_postgres_connections_high
+    expr: |
+      sum by (host, instance_name) (pg_stat_database_numbackends{job="postgres"})
+      /
+      on (host, instance_name)
+      max by (host, instance_name) (pg_settings_max_connections{job="postgres"}) > 0.85
+    for: 5m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 PostgreSQL connections above 85% on {{ $labels.instance_name }}"
+      description: "PostgreSQL backend connections remained above 85% of max_connections for 5m. Check connection pools before clients are refused."
+  - alert: H5_postgres_replication_lag
+    expr: pg_replication_lag_seconds{job="postgres"} > 60
+    for: 5m
+    labels:
+      severity: warning
+      class: H5
+    annotations:
+      summary: "H5 PostgreSQL replication lag above 60s on {{ $labels.instance_name }}"
+      description: "The replication lag metric remained above 60s for 5m. Check the standby and WAL receiver."

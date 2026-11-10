@@ -10,7 +10,12 @@ HOST="${1:-contabo-a}"
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "== obs-alerting install to $HOST (additive, no PG/app touch) =="
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" 'sudo mkdir -p /data/obs/alertmanager /data/obs/rules /data/obs/configs/blackbox /data/alertmanager-data && sudo chmod 700 /data/obs/alertmanager && sudo chown -R 65534:65534 /data/alertmanager-data && sudo chmod 700 /data/alertmanager-data && echo "dirs ok"'
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" 'sudo mkdir -p /data/obs/alertmanager /data/obs/rules /data/obs/configs/vm /data/obs/configs/blackbox /data/alertmanager-data && sudo chmod 700 /data/obs/alertmanager && sudo chown -R 65534:65534 /data/alertmanager-data && sudo chmod 700 /data/alertmanager-data && echo "dirs ok"'
+
+# Back up every live file this installer may replace, preserving mode and
+# ownership. SMTP values stay in the root-only copy on the host and are never
+# printed. Files absent on a first install simply have no backup.
+ssh "$HOST" 'set -e; stamp=$(date -u +%Y%m%dT%H%M%SZ)-$$; for path in /data/obs/docker-compose.yml /data/obs/configs/vm/prometheus.yml /data/obs/rules/rules-vm.yml /data/obs/rules/rules-vl.yml /data/obs/configs/blackbox/blackbox.yml /data/obs/alertmanager/alertmanager.yml; do if sudo test -f "$path"; then sudo cp -p "$path" "$path.bak-$stamp"; fi; done; echo "prior observability configs backed up where present"'
 
 # Sync reviewed configs (no secrets in repo).
 scp "$REPO_DIR/configs/vmalert/rules-vm.yml" "$HOST:/tmp/rules-vm.yml"
@@ -22,11 +27,11 @@ scp "$REPO_DIR/docker-compose.yml" "$HOST:/tmp/docker-compose.yml.new"
 
 ssh "$HOST" 'sudo mv /tmp/rules-vm.yml /tmp/rules-vl.yml /data/obs/rules/ && sudo chmod 644 /data/obs/rules/rules-vm.yml /data/obs/rules/rules-vl.yml && sudo ls -l /data/obs/rules/'
 ssh "$HOST" 'sudo mv /tmp/blackbox.yml /data/obs/configs/blackbox/blackbox.yml && sudo chmod 644 /data/obs/configs/blackbox/blackbox.yml && sudo ls -l /data/obs/configs/blackbox/'
-# Backup + sync Prometheus scrape config (production and canary blackbox jobs). VM hot-reloads,
-# but if targets do not appear within 90s, operator restarts victoria-metrics (data preserved).
-ssh "$HOST" 'sudo cp /data/obs/configs/vm/prometheus.yml /data/obs/configs/vm/prometheus.yml.bak-$(date -u +%Y%m%dT%H%M%SZ) && sudo mv /tmp/prometheus.yml /data/obs/configs/vm/prometheus.yml && sudo chmod 644 /data/obs/configs/vm/prometheus.yml && echo "prometheus synced (backup kept)"'
-# Backup + sync compose (adds blackbox/vmalert/AM/canary, no changes to VM/VL/Vector).
-ssh "$HOST" 'sudo cp /data/obs/docker-compose.yml /data/obs/docker-compose.yml.bak-$(date -u +%Y%m%dT%H%M%SZ) && sudo mv /tmp/docker-compose.yml.new /data/obs/docker-compose.yml && sudo chmod 644 /data/obs/docker-compose.yml && echo "compose synced (backup kept)"'
+# Sync Prometheus scrape config after the backup above. VM hot-reloads it; the
+# compose apply below also restarts VM to apply the new retention and memory limits.
+ssh "$HOST" 'sudo mv /tmp/prometheus.yml /data/obs/configs/vm/prometheus.yml && sudo chmod 644 /data/obs/configs/vm/prometheus.yml && echo "prometheus synced (backup kept)"'
+# Sync compose after the backup above, including the VM/VL retention and memory changes.
+ssh "$HOST" 'sudo mv /tmp/docker-compose.yml.new /data/obs/docker-compose.yml && sudo chmod 644 /data/obs/docker-compose.yml && echo "compose synced (backup kept)"'
 
 # Inject SMTP creds on-host from /etc/msmtprc (root 600) without printing values.
 # msmtprc holds per-account blocks (account <name>: host/port/user/password).
@@ -84,5 +89,5 @@ PY'
 ssh "$HOST" 'sudo rm -f /tmp/alertmanager.yml.template; sudo ls -l /data/obs/alertmanager/ /data/obs/configs/blackbox/ /data/obs/rules/'
 
 echo "Configs synced. Next: deploy compose services from $REPO_DIR/docker-compose.yml"
-echo "(operator: ssh $HOST 'sudo docker compose -f /data/obs/docker-compose.yml up -d blackbox vmalert-vm vmalert-vl alertmanager obs-a1-https-canary obs-a5-canary')"
-echo "Then verify: curl localhost:9093/api/v2/status, :8880/api/v1/rules, :8881/api/v1/rules, and VM targets include blackbox-https and blackbox-https-canary."
+echo "(operator: ssh $HOST 'sudo docker compose -f /data/obs/docker-compose.yml up -d victoria-metrics victoria-logs blackbox vmalert-vm vmalert-vl alertmanager obs-a1-https-canary obs-a5-canary')"
+echo "Then verify: curl localhost:9093/api/v2/status, :8880/api/v1/rules, :8881/api/v1/rules, and VM targets include cadvisor, blackbox-https, blackbox-https-canary, and traefik."

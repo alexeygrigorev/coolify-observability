@@ -4,7 +4,7 @@
 
 | Tier | What | How long |
 |------|------|----------|
-| Hot (Contabo NVMe) | VM local | **`-retentionPeriod=2d`** (~24–48h; yesterday stays queryable in vmui) |
+| Hot (Contabo NVMe) | VM local | **`-retentionPeriod=30d`** (metrics remain queryable through archive retries and incident review) |
 | Hot (Contabo NVMe) | VL local | **`-retentionPeriod=14d`** (bfd84d52: retry window for failed log archives) |
 | Warm (S3) | Closed day export | **14 days** lifecycle on `coolify/obs/` |
 | Gone | After S3 expiry | Delete |
@@ -26,7 +26,9 @@ Same bucket + IAM user as Coolify Postgres dumps (`coolify-s3-backup-writer`, pr
 
 `00:15` Europe/Berlin via `/etc/cron.d/coolify-obs-archive` → `/usr/local/sbin/coolify-obs-archive.sh`.
 
-Early morning keeps nearly the full D-2 window inside VM's 2d retention before GC.
+The D-2 archive window remains inside VM's 30d retention, including after a
+failed S3 upload. cAdvisor normalizes deploy-time `name` suffixes and drops
+container IDs so retention does not multiply series for every deployment.
 
 Backfill / retry one day (logs only when metrics already landed):
 
@@ -47,7 +49,7 @@ Metrics are VictoriaMetrics `/api/v1/export` JSON lines; logs are VictoriaLogs L
 
 | Path | Role |
 |------|------|
-| `docker-compose.prod.yml` | `-retentionPeriod=2d` VM, `14d` VL |
+| `docker-compose.yml`, `docker-compose.prod.yml` | `-retentionPeriod=30d` VM, `14d` VL; VM 2Gi and VL 1Gi memory caps |
 | `scripts/obs-day-archive.sh` | export → S3 → verify |
 | `scripts/coolify-obs-archive.cron` | cron.d fragment |
 | `scripts/coolify-obs-archive.env.example` | `/etc/coolify-obs-archive.env` placeholders |
@@ -68,4 +70,6 @@ Redeploy compose after retention flag change:
 ssh contabo-a 'cd /data/obs && sudo docker compose up -d'
 ```
 
-Do **not** break live scrapes: recreate only VM/VL (compose up -d); Vector keeps running if unchanged.
+Do **not** break live scrapes: recreate only VM/VL (compose up -d); Vector
+keeps running if unchanged. Back up the current compose and scrape/rule files
+before applying updates; the install script creates timestamped backups.

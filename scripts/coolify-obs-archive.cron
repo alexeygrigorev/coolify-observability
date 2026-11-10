@@ -1,6 +1,6 @@
 # Daily Contabo obs day archive → S3 — contabo-a (.163)
 # Archives day-before-yesterday (Europe/Berlin) shortly after midnight so
-# -retentionPeriod=2d still holds nearly the full closed day.
+# -retentionPeriod=30d keeps the closed day available well beyond the retry window.
 # TZ= pins wall clock regardless of host timezone.
 
 TZ=Europe/Berlin
