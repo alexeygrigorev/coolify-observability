@@ -41,6 +41,16 @@ run, including CMP home + the ML Zoomcamp course page; CMP `/api/health/`
 checks remain separate from these page-level TTFB probes. The service label
 lets the query below combine samples across Hetzner and both Contabo hosts.
 
+### Proxy request attribution (F9)
+
+Vector parses JSON access logs from `coolify-proxy` and writes only
+`client_host`, `request_host`, `request_path`, `status`, `duration_ns`, and
+`user_agent`, plus host/container/time metadata. Query strings are removed from
+`request_path`; the original JSON line and all other access-log fields,
+including headers and body-related fields, are discarded. Malformed proxy
+lines are dropped. Vector unit tests for the allowlist and routing are in
+`tests/vector-fable-accesslog.yaml`.
+
 One PromQL p95 per service (30d, latency VM `:8429/vmui`):
 
 ```promql
