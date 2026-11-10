@@ -1,0 +1,23 @@
+# Docker 29 uses the containerd image store; cAdvisor >=0.55 understands it.
+# Keep this separate from the legacy lgtm exporters and upgrade one host at a time.
+name: obs-cadvisor
+services:
+  cadvisor:
+    image: ghcr.io/google/cadvisor:0.55.1
+    container_name: obs-cadvisor
+    command: ["--store_container_labels=false", "--housekeeping_interval=30s"]
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    ports:
+      - "127.0.0.1:9101:8080"
+      - "${CADVISOR_WG_IP:?Set the host WireGuard IP}:9101:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    mem_limit: 512m
+    cpus: "0.5"

@@ -151,3 +151,24 @@ Details: [`docs/retention-s3.md`](docs/retention-s3.md). Installer: `scripts/ins
 ## License
 
 MIT
+
+### Docker 29 cAdvisor upgrade
+
+The old `gcr.io/cadvisor/cadvisor:v0.49.1` cannot discover Docker containers
+using the containerd `overlayfs` image store: it looks for obsolete
+`image/overlayfs/layerdb/mounts/*/mount-id` files. Use the pinned
+`docker-compose.cadvisor.yml` exporter with the host `/var/run` mount (including
+`containerd/containerd.sock`). It binds only loopback and WireGuard.
+
+Upgrade one host at a time. Save the old exporter's inspect output and Compose
+file in a root-only timestamped directory, pull the new image, then stop the old
+exporter and start this Compose file from `/data/obs-cadvisor/` with
+`CADVISOR_WG_IP=10.100.0.1` on contabo-a or `10.100.0.2` on contabo-b.
+Keep the stopped old exporter for rollback; never remove its volumes. Confirm
+`container_cpu_usage_seconds_total{name!=""}` includes app containers and
+both `up{job="cadvisor"}` values are 1 before moving to the second host.
+If validation fails, stop the new exporter and start the old one.
+
+When replacing bind-mounted config files with `install-obs-alerting.sh`, apply
+VM/VL using Compose, then force-recreate blackbox, vmalert-vm, vmalert-vl and
+alertmanager with `--no-deps` so they mount and read the replacement files.

@@ -90,4 +90,5 @@ ssh "$HOST" 'sudo rm -f /tmp/alertmanager.yml.template; sudo ls -l /data/obs/ale
 
 echo "Configs synced. Next: deploy compose services from $REPO_DIR/docker-compose.yml"
 echo "(operator: ssh $HOST 'sudo docker compose -f /data/obs/docker-compose.yml up -d victoria-metrics victoria-logs blackbox vmalert-vm vmalert-vl alertmanager obs-a1-https-canary obs-a5-canary')"
+echo "Then force-recreate blackbox vmalert-vm vmalert-vl alertmanager with --no-deps (replacement bind-mounted files)."
 echo "Then verify: curl localhost:9093/api/v2/status, :8880/api/v1/rules, :8881/api/v1/rules, and VM targets include cadvisor, blackbox-https, blackbox-https-canary, and traefik."
