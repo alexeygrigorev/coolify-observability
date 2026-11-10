@@ -7,9 +7,51 @@ sources:
       - vector-contabo-b
 
 transforms:
+  proxy_log_route:
+    type: route
+    inputs: [docker_logs]
+    route:
+      proxy: '.container_name == "coolify-proxy" || .container_name == "/coolify-proxy"'
+      other: '.container_name != "coolify-proxy" && .container_name != "/coolify-proxy"'
+
+  proxy_access_remap:
+    type: remap
+    inputs: [proxy_log_route.proxy]
+    drop_on_error: true
+    drop_on_abort: true
+    source: |
+      access, parse_error = parse_json(string!(.message))
+      if parse_error != null {
+        abort
+      }
+      if !is_object(access) ||
+        !exists(access.ClientHost) ||
+        !exists(access.RequestHost) ||
+        !exists(access.RequestPath) ||
+        !exists(access.DownstreamStatus) ||
+        !exists(access.Duration) {
+        abort
+      }
+      request_path_parts = split(string!(access.RequestPath), "?", limit: 2)
+      container = string!(.container_name)
+      log_timestamp = .timestamp
+      . = {
+        "host": "contabo-b",
+        "fleet": "contabo-coolify",
+        "container_name": container,
+        "timestamp": log_timestamp,
+        "message": "traefik_access",
+        "client_host": access.ClientHost,
+        "request_host": access.RequestHost,
+        "request_path": request_path_parts[0],
+        "status": access.DownstreamStatus,
+        "duration_ns": access.Duration,
+        "user_agent": get!(value: access, path: ["request_User-Agent"])
+      }
+
   logs_remap:
     type: remap
-    inputs: [docker_logs]
+    inputs: [proxy_log_route.other]
     source: |
       .host = "contabo-b"
       .fleet = "contabo-coolify"
@@ -21,7 +63,7 @@ transforms:
 sinks:
   vl_logs:
     type: http
-    inputs: [logs_remap]
+    inputs: [logs_remap, proxy_access_remap]
     uri: http://10.100.0.1:9428/insert/jsonline?_stream_fields=host,container_name&_msg_field=message&_time_field=timestamp
     method: post
     encoding:

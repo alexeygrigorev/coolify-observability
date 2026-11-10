@@ -1,0 +1,51 @@
+tests:
+  - name: proxy access log is reduced to the allowlist
+    inputs:
+      - type: vrl
+        insert_at: proxy_log_route
+        source: |
+          .container_name = "coolify-proxy"
+          .timestamp = now()
+          .message = "{\"ClientHost\":\"203.0.113.7\",\"RequestHost\":\"example.test\",\"RequestPath\":\"/projects?token=test-only\",\"DownstreamStatus\":503,\"Duration\":42000,\"request_User-Agent\":\"synthetic-test-agent\",\"request_Cookie\":\"synthetic-test-cookie\",\"RequestContentSize\":91}"
+    outputs:
+      - extract_from: proxy_access_remap
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(length(keys(.)), 11)
+              assert_eq!(.message, "traefik_access")
+              assert_eq!(.client_host, "203.0.113.7")
+              assert_eq!(.request_host, "example.test")
+              assert_eq!(.request_path, "/projects")
+              assert_eq!(.status, 503)
+              assert_eq!(.duration_ns, 42000)
+              assert_eq!(.user_agent, "synthetic-test-agent")
+              assert!(!includes(keys(.), "request_Cookie"))
+              assert!(!includes(keys(.), "RequestContentSize"))
+
+  - name: malformed proxy log is dropped
+    no_outputs_from: [proxy_access_remap]
+    inputs:
+      - type: vrl
+        insert_at: proxy_log_route
+        source: |
+          .container_name = "coolify-proxy"
+          .timestamp = now()
+          .message = "not-json"
+
+  - name: non-proxy container logs continue through the normal remap
+    inputs:
+      - type: vrl
+        insert_at: proxy_log_route
+        source: |
+          .container_name = "application-worker"
+          .timestamp = now()
+          .message = "synthetic application event"
+    outputs:
+      - extract_from: logs_remap
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.message, "synthetic application event")
+              assert!(includes(["contabo-a", "contabo-b"], .host))
+              assert_eq!(.fleet, "contabo-coolify")

@@ -49,6 +49,45 @@ def test_cadvisor_scrapes_both_hosts_and_bounds_deploy_cardinality():
     assert any(rule.get("action") == "labeldrop" and rule.get("regex") == "id" for rule in relabels)
 
 
+def test_vector_proxy_access_logs_are_allowlisted_on_both_hosts():
+    expected_fields = {
+        "client_host",
+        "request_host",
+        "request_path",
+        "status",
+        "duration_ns",
+        "user_agent",
+    }
+    for host in ("a", "b"):
+        config = yaml.safe_load((ROOT / f"configs/vector/contabo-{host}/vector.yaml").read_text())
+        transforms = config["transforms"]
+        route = transforms["proxy_log_route"]
+        assert route["route"]["proxy"] == '.container_name == "coolify-proxy" || .container_name == "/coolify-proxy"'
+        assert route["route"]["other"] == '.container_name != "coolify-proxy" && .container_name != "/coolify-proxy"'
+
+        access = transforms["proxy_access_remap"]
+        assert access["inputs"] == ["proxy_log_route.proxy"]
+        assert access["drop_on_error"] is True
+        assert access["drop_on_abort"] is True
+        for field in expected_fields:
+            assert f'"{field}"' in access["source"]
+        assert 'split(string!(access.RequestPath), "?", limit: 2)' in access["source"]
+        assert 'get!(value: access, path: ["request_User-Agent"])' in access["source"]
+        assert "parse_json(" in access["source"]
+        assert "encode_json" not in access["source"]
+        assert transforms["logs_remap"]["inputs"] == ["proxy_log_route.other"]
+
+        vl_sink = config["sinks"]["vl_logs"]
+        assert set(vl_sink["inputs"]) == {"logs_remap", "proxy_access_remap"}
+
+    vector_tests = yaml.safe_load((ROOT / "tests/vector-fable-accesslog.yaml").read_text())
+    assert {test["name"] for test in vector_tests["tests"]} == {
+        "proxy access log is reduced to the allowlist",
+        "malformed proxy log is dropped",
+        "non-proxy container logs continue through the normal remap",
+    }
+
+
 def test_blackbox_covers_aishl_and_website_production_every_15_seconds():
     config = yaml.safe_load((ROOT / "configs/vm/prometheus.yml").read_text())
     job = next(job for job in config["scrape_configs"] if job["job_name"] == "blackbox-https")
