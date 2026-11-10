@@ -7,7 +7,7 @@
 # A8 is a routing property (retry), proven by every drill's mail.
 # All thresholds are currently OK (no firing); canary drills make one fire + clear.
 # DECISION t1468u: approved for prod. t1493u AC3: real alerts -> prod-real
-# (alexey@datatalks.club + dev@dtcdev.click); drills (drill=true or *_canary)
+# (dev@dtcdev.click only); drills (drill=true or *_canary)
 # -> dev@ only. Never mute real prod alerts.
 
 groups:

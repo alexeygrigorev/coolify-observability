@@ -73,8 +73,7 @@ Hourly `p50,p95,p99,SampleCount` for
 
 **Wired (t1029u)** via `coolify-healthcheck` → msmtp → SES (`noreply@datatalks.club`):
 
-1. `alexey@datatalks.club` — Alexey (prod)
-2. `dev@dtcdev.click` — shared ops inbox
+1. `dev@dtcdev.click` — shared ops inbox
 
 `dtcdev+5xx@mail.grokbot.com` stays off Contabo prod alert lists unless needed for bot wake.
 

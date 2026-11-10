@@ -1,5 +1,4 @@
-# Prod alert recipients (t1205u): Alexey + shared ops inbox.
+# Prod alert recipients (t1205u): shared ops inbox only (t2890u).
 # Do not add dtcdev+5xx@mail.grokbot.com unless needed for bot wake.
 destinations:
-  - email: alexey@datatalks.club
   - email: dev@dtcdev.click

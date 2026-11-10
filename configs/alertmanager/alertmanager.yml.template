@@ -2,13 +2,12 @@
 # NEVER commit real SMTP credentials. Installer on contabo-a injects them
 # from /etc/msmtprc (root 600) into /data/obs/alertmanager/alertmanager.yml (600).
 # Placeholders below are replaced on-host; this file is safe to commit review.
-# Real (non-drill) alerts -> prod-real receiver: alexey@datatalks.club + dev@.
+# Real (non-drill) alerts -> prod-real receiver: dev@dtcdev.click only.
 # Drills (drill=true label or *_canary alertname) -> dev-only: dev@dtcdev.click.
 # Slowness (class A10, f5d8e22b AC3) -> slowness-dev ONLY: dev@dtcdev.click
 # from alerts@dtcdev.click (its own SES account) — never prod-real.
 # No real prod alert is muted. send_resolved: true on every email_config that
-# delivers to dev@dtcdev.click (AC5); the alexey@ prod-real leg is false since
-# t1885u/3bf25bda (2026-10-29, deployed) to keep RECOVERED noise off it.
+# delivers to dev@dtcdev.click (AC5).
 
 global:
   resolve_timeout: 5m
@@ -64,21 +63,6 @@ route:
 receivers:
 - name: 'prod-real'
   email_configs:
-  # t1885u/3bf25bda (2026-10-29, deployed): no RECOVERED noise to Alexey's
-  # mailbox — send_resolved stays false on this leg only; dev@ leg keeps true.
-  - to: 'alexey@datatalks.club'
-    send_resolved: false
-    headers:
-      Subject: '[OBS {{ .Status | toUpper }}] {{ .GroupLabels.alertname }} ({{ .GroupLabels.class }}){{ if .GroupLabels.host }} {{ .GroupLabels.host }}{{ end }}'
-    html: |
-      {{ range .Alerts }}
-      <b>{{ .Status }}</b> {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}<br>
-      {{ .Annotations.summary }}<br>
-      {{ .Annotations.description }}<br>
-      {{ end }}
-    text: |
-      {{ range .Alerts }}{{ .Status }} {{ .Labels.alertname }} ({{ .Labels.class }}){{ if .Labels.host }} host={{ .Labels.host }}{{ end }}{{ if .Labels.mountpoint }} mount={{ .Labels.mountpoint }}{{ end }}{{ if .Labels.instance }} instance={{ .Labels.instance }}{{ end }}: {{ .Annotations.summary }} — {{ .Annotations.description }}
-      {{ end }}
   - to: 'dev@dtcdev.click'
     send_resolved: true
     headers:

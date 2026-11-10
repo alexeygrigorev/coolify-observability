@@ -137,7 +137,7 @@ def test_routing_real_to_prod_drills_to_dev():
     receivers = {r["name"]: r for r in data["receivers"]}
     prod = receivers["prod-real"]
     tos = {e["to"] for e in prod["email_configs"]}
-    assert tos == {"alexey@datatalks.club", "dev@dtcdev.click"}
+    assert tos == {"dev@dtcdev.click"}
     # Drill alerts (drill=true or *_canary) -> dev-only -> dev@ only; the
     # f5d8e22b AC3 slowness route adds a third child receiver (dev-only mail
     # from alerts@dtcdev.click) without widening prod-real.
@@ -168,7 +168,7 @@ def test_alertmanager_email_templates_name_host_and_mountpoint():
     receivers = {r["name"]: r for r in data["receivers"]}
     prod = receivers["prod-real"]
     assert {e["to"] for e in prod["email_configs"]} == {
-        "alexey@datatalks.club", "dev@dtcdev.click"
+        "dev@dtcdev.click"
     }
     for receiver in data["receivers"]:
         for email in receiver.get("email_configs", []):

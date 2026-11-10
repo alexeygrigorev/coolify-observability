@@ -68,7 +68,7 @@ def test_a1_canary_routes_dev_only_and_real_outage_pages_prod():
     receivers = {receiver["name"]: receiver for receiver in config["receivers"]}
     prod_to = {email["to"] for email in receivers["prod-real"]["email_configs"]}
     dev_to = [email["to"] for email in receivers["dev-only"]["email_configs"]]
-    assert prod_to == {"alexey@datatalks.club", "dev@dtcdev.click"}
+    assert prod_to == {"dev@dtcdev.click"}
     assert dev_to == ["dev@dtcdev.click"]
 
     def receiver_for(labels):
