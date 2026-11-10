@@ -14,6 +14,13 @@ Date: 2026-10-26. Intake: bc9b3f30 (re-file of a478bb62 family).
   `configs/vmalert/`, `configs/alertmanager/`, `docker-compose.yml`).
   No ADR text is duplicated here to avoid drift; the aws-infra commit above is canonical.
 
+## Current Fable audit update (2026-11-10)
+
+The original 2-day VictoriaMetrics hot window is superseded by the Fable infra
+fix: retain VM metrics for 30 days with a 2GiB container cap and 1GiB
+`-memory.allowedBytes`; VictoriaLogs remains at 14 days with a 1GiB cap.
+The 14-day S3 lifecycle is unchanged.
+
 ## Review (different model from implementer)
 
 - Implementer of the ADR: Codex Agent (aws-infra commit 589fb1c, 2026-10-23).

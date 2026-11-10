@@ -1,6 +1,6 @@
 # VictoriaMetrics + VictoriaLogs + Vector on contabo-a (.163)
 # vmui: http://10.100.0.1:8428/vmui  |  VL: http://10.100.0.1:9428/select/vmui
-# No Grafana. Hard mem caps. Digests pinned.
+# No Grafana. Hard memory caps. Digests pinned.
 name: coolify-obs-victoria
 
 services:
@@ -10,8 +10,8 @@ services:
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-metrics-data
-      - -retentionPeriod=2d
-      - -memory.allowedBytes=134217728
+      - -retentionPeriod=30d
+      - -memory.allowedBytes=1073741824
       - -search.maxUniqueTimeseries=300000
       - -promscrape.config=/etc/vm/prometheus.yml
       - -httpListenAddr=:8428
@@ -19,8 +19,8 @@ services:
       - /data/obs/vm:/victoria-metrics-data
       - /data/obs/configs/vm/prometheus.yml:/etc/vm/prometheus.yml:ro
     network_mode: host
-    mem_limit: 256m
-    memswap_limit: 256m
+    mem_limit: 2g
+    memswap_limit: 2g
     cpus: "0.5"
 
   victoria-logs:
@@ -32,18 +32,18 @@ services:
       # bfd84d52: 14d (was 2d) so a failed daily S3 archive can be retried
       # before the day ages out; partitions are ~40-70MB/day.
       - -retentionPeriod=14d
-      - -memory.allowedBytes=134217728
+      - -memory.allowedBytes=536870912
       - -httpListenAddr=:9428
       - -search.maxQueryDuration=120s
     volumes:
       - /data/obs/vl:/victoria-logs-data
     network_mode: host
-    mem_limit: 256m
-    memswap_limit: 256m
+    mem_limit: 1g
+    memswap_limit: 1g
     cpus: "0.5"
 
   # f5d8e22b AC1: dedicated low-cardinality latency store, 30d retention.
-  # Main VM stays 2d (47k series node/cadvisor would OOM at 30d under 256Mi);
+  # Main VM retains 30d with a 2GiB cap and normalized cAdvisor labels;
   # latency series are ~dozens (traefik per-service + probe_ttfb/total),
   # so 30d fits comfortably in 256Mi. Push path:
   # healthcheck/deadman -> :8429/api/v1/import/prometheus (WG/SSH).

@@ -3,6 +3,13 @@
 Date: 2026-10-26. Worker: obs-approval (Hub intake bc9b3f30, re-file of a478bb62 family).
 Status: **NOT APPROVED — awaiting Alexey's explicit decision. No Contabo/Coolify write performed.**
 
+> Superseded for the Fable infra changes dated 2026-11-10: Hub intake
+> `3d787c10-1b64-45bb-827b-312dee3afc81` authorizes applying the reviewed,
+> merged observability changes on contabo-a with timestamped backups and live
+> verification. The old decision below applies only to commit `14a5167`; its
+> `2d` retention and disposable-data rollback text are historical and must not
+> be used for the current 30-day store.
+
 ## Candidate proposed for approval
 
 - Repo: `coolify-observability`, exact commit `14a5167` (`fix(obs): correct p95 PromQL`, on top of `7329167` traefik/latency + `c67e247` A1–A8 drills).

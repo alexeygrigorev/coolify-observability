@@ -14,7 +14,7 @@ Lightweight observability for **Coolify on Contabo**.
 
 **Rejected for Contabo now:** OpenObserve (partial install torn down). Fallback remains documented only if VM/VL fails soak.
 
-Hard caps: VM 256Mi / VL 256Mi / Vector 128Mi / latency-VM 256Mi.
+Hard caps: VM 2Gi / VL 1Gi / Vector 128Mi / latency-VM 256Mi.
 
 ## HTTP response time + slowness (f5d8e22b)
 
@@ -25,8 +25,12 @@ WireGuard (`configs/vm/prometheus.yml` `traefik` job).
 
 Latency store: `victoria-metrics-latency` on `.163` `:8429`
 (`-retentionPeriod=30d`, 256Mi cap) holds low-cardinality series only
-(traefik per-service + `probe_ttfb/total`); main VM stays 2d (47k
-node/cadvisor series would OOM at 30d under 256Mi). Probes:
+(traefik per-service + `probe_ttfb/total`). The main VM also retains 30d with
+a 2Gi cap; cAdvisor scrapes both Contabo hosts, normalizes Coolify deploy-time
+suffixes, and drops changing container IDs to keep series cardinality bounded.
+VictoriaLogs retains 14d with a 1Gi cap so a failed daily archive can be
+retried. Blackbox probes include AISHL and the production website at
+15-second intervals. Probes:
 `coolify-healthcheck` (Contabo) + `contabo-deadman` (Hetzner, via SSH)
 record `probe_ttfb_seconds` / `probe_total_seconds` per URL for CMP home +
 course, AISHL home + content, Relay /health, website home + /events/past, and
@@ -111,9 +115,11 @@ python -m pytest tests/ -v --tb=short
 
 ## Contabo paths
 
-Installation requires a separate, explicitly approved Contabo task after rule
-and drill review. This repository/plan task does not authorize installation or
-a Coolify deployment.
+Normal installations require an explicitly approved Contabo task after rule
+and drill review. The Fable infra intake `3d787c10-1b64-45bb-827b-312dee3afc81`
+authorizes applying these reviewed changes after merge. Use
+`scripts/install-obs-alerting.sh` for timestamped config backups and apply only
+the observability services; verify targets and loaded rules before finishing.
 
 - `/data/obs/docker-compose.yml` on `.163`
 - `/data/obs-exporters/docker-compose.yml` on `.141`
@@ -125,7 +131,7 @@ a Coolify deployment.
 
 | Tier | Policy |
 |------|--------|
-| Hot local | VM **`-retentionPeriod=2d`** (yesterday stays in vmui), VL **`14d`** |
+| Hot local | VM **`-retentionPeriod=30d`**, VL **`14d`** |
 | Daily archive | day-before-yesterday → gzip → `s3://…/coolify/obs/{metrics,logs}/YYYY/MM/DD/` |
 | S3 | lifecycle **14 days** on `coolify/obs/` |
 
