@@ -376,6 +376,8 @@ groups:
         max by (host, name) (container_spec_memory_limit_bytes{name!=""})
       ) > 0.85
       and on (host, name)
+      max by (host, name) (container_spec_memory_limit_bytes{name!=""}) > 0
+      and on (host, name)
       max by (host, name) (container_spec_memory_limit_bytes{name!=""}) < 1e14
     for: 5m
     labels:
